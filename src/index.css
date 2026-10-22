@@ -1,0 +1,219 @@
+@import "tailwindcss";
+
+/* Tailwind v4: bật dark mode theo class `.dark` trên <html> */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --font-sans: 'Be Vietnam Pro', system-ui, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+}
+
+/* ---------- Bảng màu: giao diện sáng (mặc định) ---------- */
+:root {
+  color-scheme: light;
+  --canvas: #eef1f0;
+  --surface: #ffffff;
+  --surface-2: #f3f5f4;
+  --line: #dde3e0;
+  --ink: #15201d;
+  --ink-2: #51605b;
+  --ink-3: #7d8a85;
+  --accent: #0f7b66;
+  --accent-strong: #0b6453;
+  --accent-ink: #ffffff;
+  --accent-soft: #e0f1ec;
+  --warn: #a15c07;
+  --warn-soft: #fbf0dc;
+  --danger: #b3372f;
+  --danger-soft: #fbe8e6;
+}
+
+/* ---------- Bảng màu: giao diện tối ---------- */
+.dark {
+  color-scheme: dark;
+  --canvas: #0e1513;
+  --surface: #151e1b;
+  --surface-2: #1c2723;
+  --line: #28352f;
+  --ink: #e8efec;
+  --ink-2: #a3b1ab;
+  --ink-3: #74837c;
+  --accent: #48c7a3;
+  --accent-strong: #62d6b4;
+  --accent-ink: #072119;
+  --accent-soft: #17332b;
+  --warn: #e3ac5a;
+  --warn-soft: #33281a;
+  --danger: #f08a82;
+  --danger-soft: #3a1f1d;
+}
+
+/* Tờ hóa đơn luôn là giấy trắng, kể cả khi dùng giao diện tối */
+.paper {
+  --surface: #ffffff;
+  --surface-2: #f2f4f3;
+  --line: #d6dcd9;
+  --ink: #15201d;
+  --ink-2: #51605b;
+  --ink-3: #7d8a85;
+  --accent: #0f7b66;
+  --accent-soft: #e0f1ec;
+  --warn: #a15c07;
+  --warn-soft: #fbf0dc;
+  color-scheme: light;
+}
+
+@layer base {
+  html {
+    background: var(--canvas);
+  }
+  body {
+    font-family: var(--font-sans);
+    background: var(--canvas);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type='number'] {
+    -moz-appearance: textfield;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 1rem;
+  }
+  .field {
+    width: 100%;
+    background: var(--surface);
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: 0.75rem;
+    padding: 0.625rem 0.875rem;
+    font-size: 0.9375rem;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .field::placeholder {
+    color: var(--ink-3);
+  }
+  .field:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 0.75rem;
+    padding: 0.625rem 1rem;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    line-height: 1.25;
+    transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
+    cursor: pointer;
+  }
+  .btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: var(--accent-ink);
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: var(--accent-strong);
+  }
+  .btn-secondary {
+    background: var(--surface-2);
+    color: var(--ink);
+    border: 1px solid var(--line);
+  }
+  .btn-secondary:hover:not(:disabled) {
+    border-color: var(--ink-3);
+  }
+  .btn-ghost {
+    color: var(--ink-2);
+  }
+  .btn-ghost:hover:not(:disabled) {
+    background: var(--surface-2);
+    color: var(--ink);
+  }
+  .icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 0.625rem;
+    color: var(--ink-2);
+    transition: background-color 0.15s, color 0.15s;
+    cursor: pointer;
+  }
+  .icon-btn:hover {
+    background: var(--surface-2);
+    color: var(--ink);
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+  .receipt-font {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Mép răng cưa ở đáy tờ hóa đơn */
+  .paper-edge {
+    position: relative;
+  }
+  .paper-edge::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -9px;
+    height: 10px;
+    background:
+      linear-gradient(135deg, var(--surface) 5px, transparent 0) 0 0 / 14px 10px repeat-x,
+      linear-gradient(225deg, var(--surface) 5px, transparent 0) 0 0 / 14px 10px repeat-x;
+  }
+
+  .thin-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line) transparent;
+  }
+}
