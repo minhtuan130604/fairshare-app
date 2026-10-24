@@ -1,11 +1,13 @@
-import { Download, Copy, Check, Link2 } from 'lucide-react';
+import { Download, Copy, Check, Link2, Users } from 'lucide-react';
 import { useBillStore } from '../../store/useBillStore';
+import { useAuthStore } from '../../store/useAuthStore';
 import { calculateMemberBreakdowns, calculateSettlements } from '../../utils/calculations';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { Modal } from '../ui/Modal';
 import { useState, useRef } from 'react';
 import { toPng } from 'html-to-image';
 import { useLocale, t } from '../../hooks/useLocale';
+import { ShareToFriendsModal } from './ShareToFriendsModal';
 
 interface ShareModalProps {
   isOpen: boolean;
@@ -14,10 +16,12 @@ interface ShareModalProps {
 
 export function ShareModal({ isOpen, onClose }: ShareModalProps) {
   const { currentBill, exportBillToURL } = useBillStore();
+  const { user } = useAuthStore();
   const { locale } = useLocale();
   const [copied, setCopied] = useState(false);
   const [urlCopied, setUrlCopied] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [isShareFriendsOpen, setIsShareFriendsOpen] = useState(false);
   const receiptRef = useRef<HTMLDivElement>(null);
 
   if (!currentBill) return null;
@@ -123,6 +127,18 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
 
   const footer = (
     <div className="space-y-3">
+      {/* Nút gửi cho bạn bè qua tài khoản (chỉ hiện khi đã đăng nhập) */}
+      {user && (
+        <button
+          type="button"
+          onClick={() => setIsShareFriendsOpen(true)}
+          className="btn btn-secondary w-full py-2.5 text-xs flex items-center justify-center gap-2 text-accent border-accent/30 hover:border-accent hover:bg-accent/5 transition-colors font-medium"
+        >
+          <Users className="w-4 h-4" />
+          <span>{t('shareToFriends', locale)}</span>
+        </button>
+      )}
+
       <div className="flex gap-3">
         <button onClick={handleExportImage} disabled={exporting} className="btn btn-primary flex-1">
           <Download className="w-4 h-4" />
@@ -161,85 +177,96 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
   );
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={t('shareBill', locale)} footer={footer} maxWidth="max-w-xl">
-      <div
-        ref={receiptRef}
-        className="paper bg-surface text-ink border border-dashed border-line rounded-xl p-6 space-y-4 receipt-font text-sm"
-      >
-        <div className="text-center border-b border-dashed border-line pb-4">
-          <div className="text-xl font-bold break-words">{currentBill.title}</div>
-          <div className="text-ink-3 text-xs mt-1">{formatDate(currentBill.date)}</div>
-        </div>
-
-        <div className="space-y-2">
-          {currentBill.items.map((item, idx) => (
-            <div key={item.id} className="flex justify-between gap-3">
-              <span>
-                {idx + 1}. {item.name} x{item.quantity}
-              </span>
-              <span className="shrink-0">{formatCurrency(item.price * item.quantity, currentBill.currency)}</span>
-            </div>
-          ))}
-        </div>
-
-        <div className="border-t border-dashed border-line pt-3 space-y-1">
-          <div className="flex justify-between text-ink-2">
-            <span>{t('totalItems', locale)}</span>
-            <span>{formatCurrency(billSubtotal, currentBill.currency)}</span>
+    <>
+      <Modal isOpen={isOpen} onClose={onClose} title={t('shareBill', locale)} footer={footer} maxWidth="max-w-xl">
+        <div
+          ref={receiptRef}
+          className="paper bg-surface text-ink border border-dashed border-line rounded-xl p-6 space-y-4 receipt-font text-sm"
+        >
+          <div className="text-center border-b border-dashed border-line pb-4">
+            <div className="text-xl font-bold break-words">{currentBill.title}</div>
+            <div className="text-ink-3 text-xs mt-1">{formatDate(currentBill.date)}</div>
           </div>
-          {currentBill.taxPercent > 0 && (
+
+          <div className="space-y-2">
+            {currentBill.items.map((item, idx) => (
+              <div key={item.id} className="flex justify-between gap-3">
+                <span>
+                  {idx + 1}. {item.name} x{item.quantity}
+                </span>
+                <span className="shrink-0">{formatCurrency(item.price * item.quantity, currentBill.currency)}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="border-t border-dashed border-line pt-3 space-y-1">
             <div className="flex justify-between text-ink-2">
-              <span>{t('taxLabel', locale).replace(' (%)', '')} {currentBill.taxPercent}%</span>
-              <span>{formatCurrency(totalTax, currentBill.currency)}</span>
+              <span>{t('totalItems', locale)}</span>
+              <span>{formatCurrency(billSubtotal, currentBill.currency)}</span>
+            </div>
+            {currentBill.taxPercent > 0 && (
+              <div className="flex justify-between text-ink-2">
+                <span>{t('taxLabel', locale).replace(' (%)', '')} {currentBill.taxPercent}%</span>
+                <span>{formatCurrency(totalTax, currentBill.currency)}</span>
+              </div>
+            )}
+            {currentBill.tipPercent > 0 && (
+              <div className="flex justify-between text-ink-2">
+                <span>{t('serviceFee', locale)} {currentBill.tipPercent}%</span>
+                <span>{formatCurrency(totalTip, currentBill.currency)}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-base font-semibold text-accent pt-2 border-t border-dashed border-line">
+              <span>{t('total', locale)}</span>
+              <span>{formatCurrency(grandTotal, currentBill.currency)}</span>
+            </div>
+          </div>
+
+          {breakdowns.length > 0 && (
+            <div className="border-t border-dashed border-line pt-3 space-y-1">
+              <div className="font-semibold mb-1">{t('eachPersonPays', locale)}</div>
+              {breakdowns.map((b) => {
+                const member = currentBill.members.find((m) => m.id === b.memberId);
+                return (
+                  <div key={b.memberId} className="flex justify-between">
+                    <span>{member?.name}</span>
+                    <span>{formatCurrency(b.totalOwed, currentBill.currency)}</span>
+                  </div>
+                );
+              })}
             </div>
           )}
-          {currentBill.tipPercent > 0 && (
-            <div className="flex justify-between text-ink-2">
-              <span>{t('serviceFee', locale)} {currentBill.tipPercent}%</span>
-              <span>{formatCurrency(totalTip, currentBill.currency)}</span>
+
+          {settlements.length > 0 && (
+            <div className="border-t border-dashed border-line pt-3 space-y-1">
+              <div className="font-semibold mb-1">{t('settlementTitle', locale)}</div>
+              {settlements.map((s, idx) => {
+                const from = currentBill.members.find((m) => m.id === s.fromMemberId);
+                const to = currentBill.members.find((m) => m.id === s.toMemberId);
+                return (
+                  <div key={idx} className="flex justify-between gap-3">
+                    <span>
+                      {from?.name} → {to?.name}
+                    </span>
+                    <span className="shrink-0">{formatCurrency(s.amount, currentBill.currency)}</span>
+                  </div>
+                );
+              })}
             </div>
           )}
-          <div className="flex justify-between text-base font-semibold text-accent pt-2 border-t border-dashed border-line">
-            <span>{t('total', locale)}</span>
-            <span>{formatCurrency(grandTotal, currentBill.currency)}</span>
-          </div>
+
+          <div className="text-center text-xs text-ink-3 border-t border-dashed border-line pt-3">{t('createdBy', locale)}</div>
         </div>
+      </Modal>
 
-        {breakdowns.length > 0 && (
-          <div className="border-t border-dashed border-line pt-3 space-y-1">
-            <div className="font-semibold mb-1">{t('eachPersonPays', locale)}</div>
-            {breakdowns.map((b) => {
-              const member = currentBill.members.find((m) => m.id === b.memberId);
-              return (
-                <div key={b.memberId} className="flex justify-between">
-                  <span>{member?.name}</span>
-                  <span>{formatCurrency(b.totalOwed, currentBill.currency)}</span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {settlements.length > 0 && (
-          <div className="border-t border-dashed border-line pt-3 space-y-1">
-            <div className="font-semibold mb-1">{t('settlementTitle', locale)}</div>
-            {settlements.map((s, idx) => {
-              const from = currentBill.members.find((m) => m.id === s.fromMemberId);
-              const to = currentBill.members.find((m) => m.id === s.toMemberId);
-              return (
-                <div key={idx} className="flex justify-between gap-3">
-                  <span>
-                    {from?.name} → {to?.name}
-                  </span>
-                  <span className="shrink-0">{formatCurrency(s.amount, currentBill.currency)}</span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        <div className="text-center text-xs text-ink-3 border-t border-dashed border-line pt-3">{t('createdBy', locale)}</div>
-      </div>
-    </Modal>
+      {/* Modal gửi trực tiếp hóa đơn cho danh sách bạn bè */}
+      {currentBill && (
+        <ShareToFriendsModal
+          isOpen={isShareFriendsOpen}
+          onClose={() => setIsShareFriendsOpen(false)}
+          billId={currentBill.id}
+        />
+      )}
+    </>
   );
 }

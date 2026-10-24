@@ -42,7 +42,6 @@ function inferCurrencyFromScan(
 ): CurrencyCode {
   const lower = text.toLowerCase();
 
-  // Ưu tiên 1: Ký hiệu tiền tệ xuất hiện trong hóa đơn
   if (lower.includes('$') || lower.includes('usd') || lower.includes('dollar')) {
     return 'USD';
   }
@@ -59,7 +58,6 @@ function inferCurrencyFromScan(
     return 'USD';
   }
 
-  // Ưu tiên 2: Dựa vào ngôn ngữ nhận diện
   if (langCode === 'vi') return 'VND';
   if (langCode === 'en') return 'USD';
   if (langCode === 'ru') return 'RUB';
@@ -83,6 +81,62 @@ export function ScanReceiptModal({ isOpen, onClose }: ScanReceiptModalProps) {
   const lastFileRef = useRef<File | null>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
+
+  /**
+   * Tự động chuẩn hóa chuỗi tiến trình sang ngôn ngữ hiện tại,
+   * bao gồm cả chuỗi đếm giây được trả về từ tầng OCR utils.
+   */
+  const formatProgressLabel = (label: string): string => {
+    if (!label) return t('scanningReceipt', locale);
+
+    // 1. Chuỗi gửi ảnh phân tích
+    if (label.includes('gửi ảnh') || label.includes('Sending image')) {
+      return t('sendingImageForAnalysis', locale);
+    }
+
+    // 2. Chuỗi đếm ngược giây
+    const secondsMatch = label.match(/(\d+)\s*giây/i) || label.match(/(\d+)\s*s/i);
+    if (secondsMatch && (label.includes('chờ') || label.includes('wait') || label.includes('xử lý'))) {
+      return t('scanningWaitingSeconds', locale, { seconds: secondsMatch[1] });
+    }
+
+    // 3. Chuỗi trích xuất món ăn (chạy rất nhanh trước khi mở danh sách món)
+    if (label.includes('trích xuất') || label.includes('Extracting')) {
+      return t('extractItems', locale);
+    }
+
+    // 4. Chuỗi hoàn tất nhận dạng
+    if (label.includes('Hoàn tất') || label.includes('Complete') || label.includes('Done')) {
+      return t('scanComplete', locale);
+    }
+
+    // 5. Chuỗi fallback khi AI đổi model dự phòng
+    if (label.includes('thử model') || label.includes('trying another') || label.includes('đang bận')) {
+      return t('geminiFallbackModel', locale);
+    }
+
+    // 6. Chuỗi tải nhận dạng / ngôn ngữ OCR
+    if (label.includes('bộ nhận dạng') || label.includes('Loading text recognition')) {
+      return t('loadingOcr', locale);
+    }
+
+    // 7. Chuỗi chuẩn bị ảnh ban đầu
+    if (label.includes('chuẩn bị') || label.includes('Preparing')) {
+      return t('preparingImage', locale);
+    }
+
+    // 8. Chuỗi phân tích AI
+    if (label.includes('Gemini') || label.includes('AI') || label.includes('phân tích') || label.includes('Analyzing')) {
+      return t('analyzeReceipt', locale);
+    }
+
+    // 9. Chuỗi đọc/quét chung
+    if (label.includes('đọc') || label.includes('quét') || label.includes('Reading') || label.includes('Scanning')) {
+      return t('scanningReceipt', locale);
+    }
+
+    return label;
+  };
 
   useEffect(() => {
     if (!isOpen) return;
@@ -164,7 +218,6 @@ export function ScanReceiptModal({ isOpen, onClose }: ScanReceiptModalProps) {
         return;
       }
 
-      // Phát hiện đơn vị tiền tệ từ kết quả OCR / Cloud AI
       const rawText = result.text || parsed.items.map((i) => i.name).join(' ');
       const inferredCurr = inferCurrencyFromScan(rawText, lang.id, currentBill.currency);
       setDetectedCurrency(inferredCurr);
@@ -183,9 +236,9 @@ export function ScanReceiptModal({ isOpen, onClose }: ScanReceiptModalProps) {
       if (message === 'CANVAS_NOT_SUPPORTED') {
         setError(t('canvasNotSupported', locale));
       } else if (/GROQ_HTTP_429|HTTP 429/i.test(message)) {
-        setError('Hệ thống đang bận. Vui lòng chờ một chút rồi thử quét lại.');
+        setError(t('geminiUnavailable', locale));
       } else if (/TIMEOUT/i.test(message)) {
-        setError('Quét hóa đơn mất quá nhiều thời gian. Vui lòng thử lại.');
+        setError(t('geminiTimeout', locale));
       } else {
         setError(t('readFailed', locale));
       }
@@ -207,7 +260,6 @@ export function ScanReceiptModal({ isOpen, onClose }: ScanReceiptModalProps) {
   );
 
   const confirm = () => {
-    // Cập nhật loại tiền tệ mới được quét vào hóa đơn hiện tại
     if (detectedCurrency && detectedCurrency !== currentBill.currency) {
       updateCurrency(detectedCurrency);
     }
@@ -365,7 +417,7 @@ export function ScanReceiptModal({ isOpen, onClose }: ScanReceiptModalProps) {
           )}
           <div>
             <div className="flex justify-between text-sm mb-2">
-              <span className="text-ink-2">{progress.label || 'Đang quét hóa đơn...'}</span>
+              <span className="text-ink-2">{formatProgressLabel(progress.label)}</span>
               <span className="num text-ink-3">{Math.round(progress.value * 100)}%</span>
             </div>
             <div className="h-1.5 bg-surface-2 rounded-full overflow-hidden">
@@ -395,7 +447,7 @@ export function ScanReceiptModal({ isOpen, onClose }: ScanReceiptModalProps) {
               }}
               className="btn btn-secondary w-full"
             >
-              Thử quét lại
+              {t('retryScan', locale)}
             </button>
           )}
         </div>
@@ -409,9 +461,8 @@ export function ScanReceiptModal({ isOpen, onClose }: ScanReceiptModalProps) {
               {usedLang ? ` (${t('usedLanguage', locale, { language: usedLang })})` : ''}.{' '}
               {t('reviewPrompt', locale)}
             </p>
-            {/* Tag hiển thị loại tiền tệ phát hiện được */}
             <span className="text-xs font-semibold px-2 py-0.5 rounded bg-accent/10 text-accent border border-accent/20">
-              Đơn vị: {detectedCurrency}
+              {t('currencyLabel', locale)}: {detectedCurrency}
             </span>
           </div>
 
@@ -481,7 +532,7 @@ export function ScanReceiptModal({ isOpen, onClose }: ScanReceiptModalProps) {
             </ul>
           ) : (
             <p className="text-sm text-ink-3 rounded-lg border border-line p-3">
-              Không còn món nào trong danh sách. Hãy quét lại hóa đơn nếu cần.
+              {t('emptyBillsHistory', locale)}
             </p>
           )}
 
@@ -493,11 +544,11 @@ export function ScanReceiptModal({ isOpen, onClose }: ScanReceiptModalProps) {
                 setDetectedTotal(null);
               }}
               className="btn btn-secondary w-full justify-center gap-2"
-              aria-label="Xóa tất cả món đã quét"
-              title="Xóa tất cả món đã quét"
+              aria-label={t('deleteBill', locale)}
+              title={t('deleteBill', locale)}
             >
               <Trash2 className="w-4 h-4 shrink-0" aria-hidden="true" />
-              <span>Xóa tất cả món ({drafts.length})</span>
+              <span>{t('deleteBill', locale)} ({drafts.length})</span>
             </button>
           )}
         </div>

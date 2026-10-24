@@ -29,20 +29,37 @@ export function formatCurrency(amount: number, currency: string = 'USD'): string
   return `${amount.toLocaleString()} ${currency}`;
 }
 
-export function formatDate(dateString: string): string {
-  const date = new Date(dateString);
-  return new Intl.DateTimeFormat('vi-VN', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  }).format(date);
+// Hàm phụ bọc an toàn tránh văng lỗi Invalid time value khi dateString bị null/undefined/sai định dạng
+function parseSafeDate(dateInput: string | Date | null | undefined): Date {
+  if (!dateInput) return new Date();
+  const parsed = new Date(dateInput);
+  return isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
-export function formatShortDate(dateString: string): string {
-  const date = new Date(dateString);
-  return new Intl.DateTimeFormat('vi-VN', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  }).format(date);
+export function formatDate(dateString: string | Date | null | undefined, locale: string = 'vi'): string {
+  const date = parseSafeDate(dateString);
+  const localeTag = locale === 'en' ? 'en-US' : locale === 'ru' ? 'ru-RU' : locale === 'zh' ? 'zh-CN' : 'vi-VN';
+  try {
+    return new Intl.DateTimeFormat(localeTag, {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    }).format(date);
+  } catch {
+    return date.toLocaleDateString();
+  }
+}
+
+export function formatShortDate(dateString: string | Date | null | undefined, locale: string = 'vi'): string {
+  const date = parseSafeDate(dateString);
+  const localeTag = locale === 'en' ? 'en-US' : locale === 'ru' ? 'ru-RU' : locale === 'zh' ? 'zh-CN' : 'vi-VN';
+  try {
+    return new Intl.DateTimeFormat(localeTag, {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    }).format(date);
+  } catch {
+    return date.toLocaleDateString();
+  }
 }

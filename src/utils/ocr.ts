@@ -133,17 +133,12 @@ function isGroqRateLimitError(error: unknown): boolean {
 // ---------------------------------------------------------------------------
 // 2. Groq Vision: đọc từng dòng, giữ nguyên số lượng và đơn giá
 // ---------------------------------------------------------------------------
-
 async function callGroqVision(
   source: File | HTMLCanvasElement,
   onProgress: (label: string, progress: number) => void,
 ): Promise<{ result: RecognizeResult; lang: ReceiptLang }> {
-  const apiKey = getGroqApiKey();
-  if (!apiKey) throw new Error('MISSING_GROQ_API_KEY');
-
   onProgress('Đang nén ảnh hóa đơn...', 0.15);
   const base64 = await sourceToBase64(source);
-
   onProgress('Đang gửi ảnh để phân tích...', 0.35);
 
   const prompt = `
@@ -155,7 +150,6 @@ Bạn là hệ thống đọc hóa đơn nhà hàng/siêu thị. Đọc ảnh h�
   ],
   "detectedTotal": 2160000
 }
-
 Quy tắc bắt buộc:
 1. language chỉ là "vi", "en", "ru" hoặc "zh", tùy ngôn ngữ nhìn thấy trên hóa đơn.
 2. name là tên hàng hóa/món ăn đọc được từ hóa đơn. Bỏ số thứ tự ở cột đầu và không đưa tên đơn vị tính như kg, đĩa, bát, cái, lon, chai, шт vào tên, trừ khi đó là một phần thực sự của tên sản phẩm.
@@ -174,28 +168,43 @@ Quy tắc bắt buộc:
   let response: Response | null = null;
   let lastError = '';
 
-  // Chỉ thử model Vision đang được hỗ trợ. Khi gặp 429, chờ rồi thử lại đúng một lần.
-  const modelsToTry = [GROQ_MODEL];
+  // Ưu tiên gọi qua Supabase Edge Function để bảo mật API key
+  const env = import.meta.env as Record<string, string | undefined>;
+  const supabaseUrl = env.VITE_SUPABASE_URL;
+  const supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY;
+  const edgeFunctionUrl = supabaseUrl ? `${supabaseUrl}/functions/v1/ocr-receipt` : null;
+  const localDirectKey = getGroqApiKey();
 
-  for (const model of modelsToTry) {
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      console.info(
-        `[OCR] Đang gọi Groq Vision model: ${model}${attempt > 0 ? ' (lần thử lại)' : ''}`,
-      );
+  const useEdgeFunction = Boolean(edgeFunctionUrl && supabaseAnonKey);
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), GROQ_TIMEOUT_MS);
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), GROQ_TIMEOUT_MS);
 
-      try {
+    try {
+      if (useEdgeFunction && edgeFunctionUrl && supabaseAnonKey) {
+        console.info(`[OCR] Đang gửi qua Supabase Edge Function${attempt > 0 ? ' (thử lại)' : ''}`);
+        response = await fetch(edgeFunctionUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${supabaseAnonKey}`,
+            apikey: supabaseAnonKey,
+          },
+          signal: controller.signal,
+          body: JSON.stringify({ base64Image: base64, prompt }),
+        });
+      } else if (localDirectKey) {
+        console.info(`[OCR] Đang gọi trực tiếp Groq API cục bộ${attempt > 0 ? ' (thử lại)' : ''}`);
         response = await fetch(GROQ_API_URL, {
           method: 'POST',
           headers: {
-            Authorization: `Bearer ${apiKey}`,
+            Authorization: `Bearer ${localDirectKey}`,
             'Content-Type': 'application/json',
           },
           signal: controller.signal,
           body: JSON.stringify({
-            model,
+            model: GROQ_MODEL,
             temperature: 0.1,
             reasoning_effort: 'none',
             response_format: { type: 'json_object' },
@@ -213,50 +222,39 @@ Quy tắc bắt buộc:
             ],
           }),
         });
-      } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') {
-          throw new Error('GROQ_TIMEOUT');
-        }
-        throw error;
-      } finally {
-        clearTimeout(timeoutId);
+      } else {
+        throw new Error('MISSING_GROQ_API_KEY');
       }
-
-      if (response.ok) {
-        console.info(`[OCR] Groq trả về HTTP ${response.status} bằng model ${model}.`);
-        break;
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('GROQ_TIMEOUT');
       }
-
-      const bodyText = await response.text().catch(() => 'Không đọc được nội dung lỗi.');
-      lastError = `HTTP ${response.status}: ${bodyText.slice(0, 800)}`;
-      console.error('[OCR] Groq API trả lỗi:', {
-        model,
-        status: response.status,
-        message: bodyText.slice(0, 500),
-      });
-
-      if (response.status === 429 && attempt === 0) {
-        const delayMs = getGroqRetryDelayMs(response, bodyText);
-        const waitSeconds = Math.ceil(delayMs / 1_000);
-        console.warn(`[OCR] Groq rate limit (429). Tự thử lại sau khoảng ${waitSeconds} giây.`);
-        onProgress(`Đang xử lý hóa đơn, vui lòng chờ thêm ${waitSeconds} giây...`, 0.45);
-        await waitMs(delayMs);
-        continue;
-      }
-
-      break;
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
     }
 
-    if (response?.ok) break;
+    if (response.ok) break;
+
+    const bodyText = await response.text().catch(() => 'Không đọc được nội dung lỗi.');
+    lastError = `HTTP ${response.status}: ${bodyText.slice(0, 800)}`;
+
+    if (response.status === 429 && attempt === 0) {
+      const delayMs = getGroqRetryDelayMs(response, bodyText);
+      const waitSeconds = Math.ceil(delayMs / 1_000);
+      onProgress(`Đang xử lý hóa đơn, vui lòng chờ thêm ${waitSeconds} giây...`, 0.45);
+      await waitMs(delayMs);
+      continue;
+    }
+    break;
   }
 
   if (!response?.ok) {
     const status = response ? `GROQ_HTTP_${response.status}` : 'GROQ_REQUEST_FAILED';
-    throw new Error(`${status}: ${lastError || 'Groq API không trả về phản hồi thành công.'}`);
+    throw new Error(`${status}: ${lastError || 'Không nhận được phản hồi hợp lệ.'}`);
   }
 
   onProgress('Đang phân tích dữ liệu hóa đơn...', 0.75);
-
   const responseJson: unknown = await response.json();
   if (!responseJson || typeof responseJson !== 'object') {
     throw new Error('GROQ_INVALID_RESPONSE');
@@ -283,7 +281,6 @@ Quy tắc bắt buộc:
     .replace(/\s*```$/, '')
     .trim();
 
-  // Phòng trường hợp model vô tình thêm văn bản ngoài JSON.
   const firstBrace = cleanJson.indexOf('{');
   const lastBrace = cleanJson.lastIndexOf('}');
   if (firstBrace >= 0 && lastBrace > firstBrace) {
@@ -306,16 +303,14 @@ Quy tắc bắt buộc:
   ) {
     detectedLangId = data.language as Exclude<ReceiptLangId, 'auto'>;
   }
-  const matchedLang = RECEIPT_LANGUAGES[detectedLangId];
 
+  const matchedLang = RECEIPT_LANGUAGES[detectedLangId];
   const scannedItems: ScannedItem[] = [];
   const syntheticLines: string[] = [];
   const rawItems = Array.isArray(data.items) ? data.items : [];
 
-  // Không tự đổi số lượng thập phân thành 1, không tự thêm "kg" và không gộp dòng.
   for (const rawItem of rawItems) {
     if (!rawItem || typeof rawItem !== 'object') continue;
-
     const item = rawItem as Record<string, unknown>;
     const cleanName = typeof item.name === 'string' ? item.name.trim() : '';
     const rawQty = item.quantity == null ? 1 : Number(item.quantity);
@@ -328,20 +323,16 @@ Quy tắc bắt buộc:
       !Number.isFinite(rawUnitPrice) ||
       rawUnitPrice <= 0
     ) {
-      console.warn('[OCR] Bỏ qua một dòng hàng có trường dữ liệu không hợp lệ.');
       continue;
     }
 
     const unitPrice = Math.round(rawUnitPrice * 100) / 100;
-
     scannedItems.push({
       name: cleanName,
       quantity: rawQty,
       price: unitPrice,
-      // Groq không trả về điểm confidence đã hiệu chuẩn; 0 thể hiện chưa có điểm tin cậy thực.
       confidence: 0,
     });
-
     syntheticLines.push(`${cleanName}   ${rawQty} x ${unitPrice}`);
   }
 
@@ -355,15 +346,7 @@ Quy tắc bắt buộc:
     syntheticLines.push(`${totalKeyword.toUpperCase()}   ${detectedTotal}`);
   }
 
-  console.info('[OCR] Groq xử lý xong:', {
-    provider: 'groq',
-    model: GROQ_MODEL,
-    itemCount: scannedItems.length,
-    totalDetected: detectedTotal !== null,
-  });
-
   onProgress('Hoàn tất!', 1);
-
   return {
     result: {
       text: syntheticLines.join('\n'),

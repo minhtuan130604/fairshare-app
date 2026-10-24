@@ -19,9 +19,18 @@ export function useAutoSaveBill(debounceMs = 1500) {
       return;
     }
 
-    // Không tự động lưu nếu hóa đơn hoàn toàn trống
-    const hasContent =
-      currentBill.items.length > 0 || currentBill.members.length > 0;
+    // Không tự động lưu nếu đây là hóa đơn được bạn bè chia sẻ (chế độ chỉ xem)
+    // @ts-expect-error isSharedBill flag
+    if (currentBill.isSharedBill) {
+      setStatus('idle');
+      return;
+    }
+
+    // Kiểm tra an toàn xem items và members có phải là mảng hợp lệ không
+    const hasItems = Array.isArray(currentBill.items) && currentBill.items.length > 0;
+    const hasMembers = Array.isArray(currentBill.members) && currentBill.members.length > 0;
+    const hasContent = hasItems || hasMembers;
+
     if (!hasContent) {
       setStatus('idle');
       return;

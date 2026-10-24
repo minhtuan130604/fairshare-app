@@ -18,10 +18,14 @@ import { useLocale, t } from './hooks/useLocale.tsx';
 import { useAutoSaveBill } from './hooks/useAutoSaveBill';
 import { useProfileStore } from './store/useProfileStore';
 import { MobileNav } from './components/layout/MobileNav';
+import { useRealtimeBills } from './hooks/useRealtimeBills';
 
 type Tab = 'members' | 'items' | 'summary';
 
 export function App() {
+  // Hook được gọi vô điều kiện; hook tự xử lý trường hợp chưa đăng nhập.
+  useRealtimeBills();
+
   const {
     currentBill,
     theme,
@@ -32,6 +36,7 @@ export function App() {
   } = useBillStore();
 
   const { user, isTransitioning } = useAuthStore();
+  const userId = user?.id;
   const { fetchProfile } = useProfileStore();
   const { locale } = useLocale();
   const { status: saveStatus } = useAutoSaveBill();
@@ -45,80 +50,60 @@ export function App() {
   // Xác định người dùng có đang mở liên kết khôi phục mật khẩu không.
   const [isResetPasswordRoute, setIsResetPasswordRoute] = useState(
     () =>
-      new URLSearchParams(window.location.search).get(
-        'reset-password',
-      ) === '1',
+      new URLSearchParams(window.location.search).get('reset-password') === '1',
   );
 
-  // Tự động tắt trạng thái khách khi phát hiện phiên đăng nhập
+  // Tự động tắt trạng thái khách khi phát hiện phiên đăng nhập.
   useEffect(() => {
-    if (user) {
+    if (userId) {
       setIsGuest(false);
     }
-  }, [user]);
+  }, [userId]);
 
-  // Đồng bộ hóa đơn và tải thông tin hồ sơ/ngân hàng từ Supabase khi người dùng đăng nhập
+  // Tải lại hóa đơn cá nhân, hóa đơn được chia sẻ và hồ sơ khi tài khoản đăng nhập thay đổi.
   useEffect(() => {
-    if (user) {
-      void fetchUserBills();
-      void fetchProfile();
-    }
-  }, [user, fetchUserBills, fetchProfile]);
+    if (!userId) return;
+
+    void fetchUserBills();
+    void fetchProfile();
+  }, [userId, fetchUserBills, fetchProfile]);
 
   // Đồng bộ giao diện sáng/tối với thẻ <html>.
   useEffect(() => {
-    document.documentElement.classList.toggle(
-      'dark',
-      theme === 'dark',
-    );
+    document.documentElement.classList.toggle('dark', theme === 'dark');
 
     document
       .querySelector('meta[name="theme-color"]')
-      ?.setAttribute(
-        'content',
-        theme === 'dark' ? '#0f1715' : '#ffffff',
-      );
+      ?.setAttribute('content', theme === 'dark' ? '#0f1715' : '#ffffff');
   }, [theme]);
 
-  // Nhập hóa đơn từ liên kết chia sẻ hoặc nạp dữ liệu mẫu (cho khách/chưa đăng nhập).
+  // Nhập hóa đơn từ liên kết chia sẻ hoặc nạp dữ liệu mẫu cho khách/chưa đăng nhập.
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
     const billData = searchParams.get('bill');
 
     if (billData) {
       if (importBillFromURL(billData)) {
-        window.history.replaceState(
-          {},
-          '',
-          window.location.pathname,
-        );
+        window.history.replaceState({}, '', window.location.pathname);
       }
-    } else if (!currentBill && !user) {
-      // Chỉ tải demo data khi chưa có bill VÀ người dùng chưa đăng nhập
+    } else if (!currentBill && !userId) {
+      // Chỉ tải dữ liệu mẫu khi chưa có hóa đơn và chưa đăng nhập.
       loadDemoData();
     }
+    // Các hành động import/demo chỉ chạy khi trạng thái đăng nhập thay đổi.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [userId]);
 
   // Kết thúc màn hình khôi phục và quay lại Landing Page.
   const finishPasswordReset = () => {
-    window.history.replaceState(
-      {},
-      '',
-      window.location.pathname,
-    );
-
+    window.history.replaceState({}, '', window.location.pathname);
     setIsResetPasswordRoute(false);
     setIsGuest(false);
   };
 
   // Ưu tiên xử lý liên kết khôi phục mật khẩu trước các màn hình khác.
   if (isResetPasswordRoute) {
-    return (
-      <ResetPasswordPage
-        onComplete={finishPasswordReset}
-      />
-    );
+    return <ResetPasswordPage onComplete={finishPasswordReset} />;
   }
 
   // Hiển thị animation khi đăng nhập đang chuyển tiếp (đa ngôn ngữ).
@@ -134,10 +119,7 @@ export function App() {
           <h2 className="text-lg font-semibold animate-pulse">
             {t('welcomeTitle', locale)}
           </h2>
-
-          <p className="text-sm text-ink-2">
-            {t('welcomePreparing', locale)}
-          </p>
+          <p className="text-sm text-ink-2">{t('welcomePreparing', locale)}</p>
         </div>
       </div>
     );
@@ -145,20 +127,14 @@ export function App() {
 
   // Chưa đăng nhập và chưa chọn dùng thử: hiển thị Landing Page.
   if (!user && !isGuest) {
-    return (
-      <LandingPage
-        onContinueAsGuest={() => setIsGuest(true)}
-      />
-    );
+    return <LandingPage onContinueAsGuest={() => setIsGuest(true)} />;
   }
 
   // Chờ dữ liệu hóa đơn sẵn sàng.
   if (!currentBill) {
     return (
       <div className="min-h-screen bg-canvas text-ink flex items-center justify-center">
-        <p className="text-ink-2">
-          {t('loading', locale)}
-        </p>
+        <p className="text-ink-2">{t('loading', locale)}</p>
       </div>
     );
   }
@@ -171,7 +147,7 @@ export function App() {
     <div className="min-h-screen bg-canvas text-ink pb-24 lg:pb-8 relative">
       <Header />
 
-      {/* Chỉ báo trạng thái Tự động lưu (Auto-save) và Đồng bộ đám mây đa ngôn ngữ */}
+      {/* Chỉ báo trạng thái tự động lưu và đồng bộ đám mây đa ngôn ngữ. */}
       {(saveStatus || isSyncing) && (
         <div className="fixed bottom-20 right-4 lg:bottom-4 z-40 bg-card/90 backdrop-blur border border-line text-xs px-3 py-1.5 rounded-full shadow-lg flex items-center gap-2 text-ink-2 pointer-events-none animate-fadeIn">
           {(saveStatus === 'saving' || (!saveStatus && isSyncing)) && (
@@ -202,7 +178,7 @@ export function App() {
       )}
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {/* Giao diện máy tính: 3 cột */}
+        {/* Giao diện máy tính: 3 cột. */}
         <div className="hidden lg:grid grid-cols-12 gap-6 items-start">
           <div className="col-span-3 space-y-6">
             <MemberManager />
@@ -217,14 +193,11 @@ export function App() {
           <div className="col-span-4 space-y-6">
             <LiveReceiptCard />
             <DebtSettlementFlow />
-            <ActionButtons
-              onShare={openShare}
-              onRoulette={openRoulette}
-            />
+            <ActionButtons onShare={openShare} onRoulette={openRoulette} />
           </div>
         </div>
 
-        {/* Giao diện điện thoại: Chuyển Tab */}
+        {/* Giao diện điện thoại: chuyển tab. */}
         <div className="lg:hidden space-y-6">
           {mobileTab === 'members' && (
             <div className="space-y-6">
@@ -244,34 +217,22 @@ export function App() {
             <div className="space-y-6">
               <LiveReceiptCard />
               <DebtSettlementFlow />
-              <ActionButtons
-                onShare={openShare}
-                onRoulette={openRoulette}
-              />
+              <ActionButtons onShare={openShare} onRoulette={openRoulette} />
             </div>
           )}
         </div>
       </main>
 
-      {/* Thanh điều hướng chân trang trên thiết bị di động */}
-      {/* Thanh điều hướng chân trang trên thiết bị di động */}
+      {/* Thanh điều hướng chân trang trên thiết bị di động. */}
       <MobileNav
         activeTab={mobileTab}
         onTabChange={setMobileTab}
         onShareClick={openShare}
       />
 
-      {/* Các cửa sổ chức năng dạng Modal */}
-      <ScanReceiptModal
-        isOpen={isScanOpen}
-        onClose={() => setIsScanOpen(false)}
-      />
-
-      <ShareModal
-        isOpen={isShareOpen}
-        onClose={() => setIsShareOpen(false)}
-      />
-
+      {/* Các cửa sổ chức năng dạng modal. */}
+      <ScanReceiptModal isOpen={isScanOpen} onClose={() => setIsScanOpen(false)} />
+      <ShareModal isOpen={isShareOpen} onClose={() => setIsShareOpen(false)} />
       <LuckyRouletteModal
         isOpen={isRouletteOpen}
         onClose={() => setIsRouletteOpen(false)}

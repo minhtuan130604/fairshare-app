@@ -5,16 +5,27 @@ import type { BillSession, MemberBreakdown, SettlementTransaction } from '../typ
  * Each item is split equally among assigned members
  * Tax and tip are distributed proportionally based on subtotals
  */
-export function calculateMemberBreakdowns(bill: BillSession): MemberBreakdown[] {
+export function calculateMemberBreakdowns(bill: BillSession | null | undefined): MemberBreakdown[] {
+  if (!bill) return [];
+
+  const items = Array.isArray(bill.items) ? bill.items : [];
+  const members = Array.isArray(bill.members) ? bill.members : [];
+  const taxPercent = typeof bill.taxPercent === 'number' ? bill.taxPercent : 0;
+  const tipPercent = typeof bill.tipPercent === 'number' ? bill.tipPercent : 0;
+
+  if (members.length === 0) return [];
+
   const breakdowns: MemberBreakdown[] = [];
 
   // Calculate bill subtotal (sum of all items)
-  const billSubtotal = bill.items.reduce((sum, item) => {
-    return sum + (item.price * item.quantity);
+  const billSubtotal = items.reduce((sum, item) => {
+    const price = Number(item?.price) || 0;
+    const quantity = Number(item?.quantity) || 0;
+    return sum + price * quantity;
   }, 0);
 
   if (billSubtotal === 0) {
-    return bill.members.map(member => ({
+    return members.map(member => ({
       memberId: member.id,
       subtotal: 0,
       taxAmount: 0,
@@ -25,21 +36,22 @@ export function calculateMemberBreakdowns(bill: BillSession): MemberBreakdown[] 
   }
 
   // Calculate each member's subtotal
-  for (const member of bill.members) {
+  for (const member of members) {
     let memberSubtotal = 0;
 
-    for (const item of bill.items) {
-      if (item.assignedMemberIds.includes(member.id)) {
-        const itemTotal = item.price * item.quantity;
-        const shareCount = item.assignedMemberIds.length;
+    for (const item of items) {
+      const assignedIds = Array.isArray(item?.assignedMemberIds) ? item.assignedMemberIds : [];
+      if (assignedIds.includes(member.id) && assignedIds.length > 0) {
+        const itemTotal = (Number(item.price) || 0) * (Number(item.quantity) || 0);
+        const shareCount = assignedIds.length;
         memberSubtotal += itemTotal / shareCount;
       }
     }
 
     // Calculate proportional tax and tip
     const proportion = memberSubtotal / billSubtotal;
-    const totalTax = billSubtotal * (bill.taxPercent / 100);
-    const totalTip = billSubtotal * (bill.tipPercent / 100);
+    const totalTax = billSubtotal * (taxPercent / 100);
+    const totalTip = billSubtotal * (tipPercent / 100);
 
     const memberTax = totalTax * proportion;
     const memberTip = totalTip * proportion;
@@ -68,20 +80,26 @@ export function calculateMemberBreakdowns(bill: BillSession): MemberBreakdown[] 
  * Min-Cash-Flow Debt Simplification Algorithm
  * Uses greedy approach to minimize number of transactions
  */
-export function calculateSettlements(breakdowns: MemberBreakdown[]): SettlementTransaction[] {
+export function calculateSettlements(breakdowns: MemberBreakdown[] | null | undefined): SettlementTransaction[] {
+  if (!Array.isArray(breakdowns) || breakdowns.length === 0) return [];
+
   const TOLERANCE = 0.01;
   const settlements: SettlementTransaction[] = [];
 
   // Create working balances (positive = owed money, negative = owes money)
-  const balances = breakdowns.map(b => ({
-    memberId: b.memberId,
-    balance: b.netBalance,
-  })).filter(b => Math.abs(b.balance) > TOLERANCE);
+  const balances = breakdowns
+    .map(b => ({
+      memberId: b.memberId,
+      balance: Number(b.netBalance) || 0,
+    }))
+    .filter(b => Math.abs(b.balance) > TOLERANCE);
 
   // Separate into creditors (positive) and debtors (negative)
-  const creditors = balances.filter(b => b.balance > TOLERANCE)
+  const creditors = balances
+    .filter(b => b.balance > TOLERANCE)
     .sort((a, b) => b.balance - a.balance);
-  const debtors = balances.filter(b => b.balance < -TOLERANCE)
+  const debtors = balances
+    .filter(b => b.balance < -TOLERANCE)
     .sort((a, b) => a.balance - b.balance);
 
   let i = 0;

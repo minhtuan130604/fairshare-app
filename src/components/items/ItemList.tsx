@@ -1,5 +1,4 @@
-
-import { ShoppingBag, Trash2 } from 'lucide-react';
+import { ShoppingBag, Trash2, Lock } from 'lucide-react';
 import { useBillStore } from '../../store/useBillStore';
 import { ItemCard } from './ItemCard';
 import { AnimatePresence } from 'framer-motion';
@@ -11,28 +10,45 @@ export function ItemList() {
 
   if (!currentBill) return null;
 
-  const items = currentBill.items;
+  // Đảm bảo items luôn là một mảng an toàn
+  const items = Array.isArray(currentBill.items) ? currentBill.items : [];
   const itemCount = items.length;
   const unassigned = items.filter(
-    (item) => item.assignedMemberIds.length === 0
+    (item) => !Array.isArray(item.assignedMemberIds) || item.assignedMemberIds.length === 0
   ).length;
+
+  // @ts-expect-error isSharedBill flag
+  const isReadOnly = Boolean(currentBill.isSharedBill);
 
   const clearAllLabel =
     locale === 'en'
       ? 'Delete all items'
       : locale === 'ru'
         ? 'Удалить все позиции'
-        : 'Xóa tất cả món';
+        : locale === 'zh'
+          ? '删除所有项目'
+          : 'Xóa tất cả món';
+
+  const readOnlyBadgeLabel =
+    locale === 'en'
+      ? 'Read-only mode'
+      : locale === 'ru'
+        ? 'Только чтение'
+        : locale === 'zh'
+          ? '只读模式'
+          : 'Chế độ chỉ xem';
 
   const handleClearAll = () => {
-    if (itemCount === 0) return;
+    if (itemCount === 0 || isReadOnly) return;
 
     const message =
       locale === 'en'
         ? `Delete all ${itemCount} items from this bill?`
         : locale === 'ru'
           ? `Удалить все ${itemCount} позиций из текущего счёта?`
-          : `Cậu có chắc muốn xóa tất cả ${itemCount} món trong hóa đơn hiện tại không?`;
+          : locale === 'zh'
+            ? `确定要从此账单中删除所有 ${itemCount} 个项目吗？`
+            : `Cậu có chắc muốn xóa tất cả ${itemCount} món trong hóa đơn hiện tại không?`;
 
     if (!window.confirm(message)) return;
 
@@ -42,9 +58,18 @@ export function ItemList() {
   return (
     <section className="card p-5">
       <div className="mb-4">
-        <h2 className="text-base font-semibold">
-          {t('itemsTitle', locale, { count: itemCount })}
-        </h2>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-base font-semibold">
+            {t('itemsTitle', locale, { count: itemCount })}
+          </h2>
+
+          {isReadOnly && (
+            <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-500 border border-amber-500/20 shrink-0">
+              <Lock className="w-3 h-3" />
+              <span>{readOnlyBadgeLabel}</span>
+            </span>
+          )}
+        </div>
 
         <p className="text-sm text-ink-3">
           {unassigned > 0
@@ -70,23 +95,25 @@ export function ItemList() {
         </div>
       )}
 
-      {/* Nút xóa tất cả nằm bên ngoài danh sách quét hóa đơn */}
-      <div className="mt-4 border-t border-line pt-4">
-        <button
-          type="button"
-          onClick={handleClearAll}
-          disabled={itemCount === 0}
-          className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-danger/40 bg-danger-soft px-4 py-3 text-sm font-semibold text-danger transition-colors hover:bg-danger/10 focus:outline-none focus:ring-2 focus:ring-danger/40 disabled:cursor-not-allowed disabled:opacity-40"
-          aria-label={`${clearAllLabel} (${itemCount})`}
-          title={clearAllLabel}
-        >
-          <Trash2 className="h-4 w-4 shrink-0" aria-hidden="true" />
-          <span>{clearAllLabel}</span>
-          <span className="rounded-full bg-danger/10 px-2 py-0.5 text-xs tabular-nums">
-            {itemCount}
-          </span>
-        </button>
-      </div>
+      {/* Chỉ hiển thị nút xóa tất cả món nếu không phải hóa đơn chỉ xem */}
+      {!isReadOnly && (
+        <div className="mt-4 border-t border-line pt-4">
+          <button
+            type="button"
+            onClick={handleClearAll}
+            disabled={itemCount === 0}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-danger/40 bg-danger-soft px-4 py-3 text-sm font-semibold text-danger transition-colors hover:bg-danger/10 focus:outline-none focus:ring-2 focus:ring-danger/40 disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label={`${clearAllLabel} (${itemCount})`}
+            title={clearAllLabel}
+          >
+            <Trash2 className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span>{clearAllLabel}</span>
+            <span className="rounded-full bg-danger/10 px-2 py-0.5 text-xs tabular-nums">
+              {itemCount}
+            </span>
+          </button>
+        </div>
+      )}
     </section>
   );
 }

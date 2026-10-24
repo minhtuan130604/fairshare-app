@@ -89,4 +89,83 @@ describe('Bill Calculations', () => {
     const breakdowns = calculateMemberBreakdowns(billWithUnassigned);
     expect(breakdowns.every(b => b.subtotal === 0)).toBe(true);
   });
+
+  it('should guarantee zero-sum invariant across all netBalances', () => {
+    const breakdowns = calculateMemberBreakdowns(mockBill);
+    const sumNetBalance = breakdowns.reduce((sum, b) => sum + b.netBalance, 0);
+
+    expect(Math.abs(sumNetBalance)).toBeLessThan(0.001);
+  });
+
+  it('should handle decimal quantities accurately (e.g. OCR weight items)', () => {
+    const decimalBill: BillSession = {
+      ...mockBill,
+      items: [
+        { id: 'i1', name: 'Ốc hương (kg)', price: 650000, quantity: 1.5, assignedMemberIds: ['m1', 'm2'] },
+      ],
+      taxPercent: 8,
+      tipPercent: 0,
+    };
+
+    const breakdowns = calculateMemberBreakdowns(decimalBill);
+    const m1 = breakdowns.find(b => b.memberId === 'm1');
+    const m2 = breakdowns.find(b => b.memberId === 'm2');
+
+    expect(m1?.subtotal).toBeCloseTo(487500, 2);
+    expect(m2?.subtotal).toBeCloseTo(487500, 2);
+    expect(m1?.taxAmount).toBeCloseTo(39000, 2);
+    expect(m2?.taxAmount).toBeCloseTo(39000, 2);
+  });
+
+  it('should not charge tax or tip to members with zero subtotal', () => {
+    const billWithFreeRider: BillSession = {
+      ...mockBill,
+      items: [
+        { id: 'i1', name: 'Hotpot', price: 200000, quantity: 1, assignedMemberIds: ['m1', 'm2'] },
+      ],
+      taxPercent: 10,
+      tipPercent: 5,
+    };
+
+    const breakdowns = calculateMemberBreakdowns(billWithFreeRider);
+    const m3 = breakdowns.find(b => b.memberId === 'm3');
+
+    expect(m3?.subtotal).toBe(0);
+    expect(m3?.taxAmount).toBe(0);
+    expect(m3?.tipAmount).toBe(0);
+    expect(m3?.totalOwed).toBe(0);
+    expect(m3?.netBalance).toBe(0);
+  });
+
+  it('should verify settlements completely clear all debts', () => {
+    const complexBill: BillSession = {
+      ...mockBill,
+      members: [
+        { id: 'm1', name: 'Alice', avatarColor: 'bg-blue-500' },
+        { id: 'm2', name: 'Bob', avatarColor: 'bg-green-500' },
+        { id: 'm3', name: 'Charlie', avatarColor: 'bg-red-500' },
+        { id: 'm4', name: 'David', avatarColor: 'bg-yellow-500' },
+      ],
+      items: [
+        { id: 'i1', name: 'Món 1', price: 120000, quantity: 1, assignedMemberIds: ['m1', 'm2'] },
+        { id: 'i2', name: 'Món 2', price: 80000, quantity: 1, assignedMemberIds: ['m3', 'm4'] },
+      ],
+      paidByMemberId: 'm1',
+      taxPercent: 0,
+      tipPercent: 0,
+    };
+
+    const breakdowns = calculateMemberBreakdowns(complexBill);
+    const settlements = calculateSettlements(breakdowns);
+
+    const remainingBalances = new Map(breakdowns.map(b => [b.memberId, b.netBalance]));
+    for (const s of settlements) {
+      remainingBalances.set(s.fromMemberId, (remainingBalances.get(s.fromMemberId) || 0) + s.amount);
+      remainingBalances.set(s.toMemberId, (remainingBalances.get(s.toMemberId) || 0) - s.amount);
+    }
+
+    for (const balance of remainingBalances.values()) {
+      expect(Math.abs(balance)).toBeLessThan(0.01);
+    }
+  });
 });

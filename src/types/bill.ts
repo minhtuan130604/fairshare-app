@@ -49,3 +49,11 @@ export interface SettlementTransaction {
   toMemberId: string;
   amount: number;
 }
+
+// Kiểu dữ liệu cho Nhóm bạn (Member Groups)
+export interface MemberGroup {
+  id: string;
+  name: string;
+  members: Omit<Member, 'id'>[]; // Lưu name, avatarColor, avatar_url, và toàn bộ thông tin thanh toán
+  createdAt: string;
+}

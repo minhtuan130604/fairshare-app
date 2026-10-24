@@ -1,4 +1,4 @@
-import { ArrowRight, CheckCircle2, Circle, QrCode, X } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Circle, QrCode, X, Copy, Check } from 'lucide-react';
 import { useBillStore } from '../../store/useBillStore';
 import { calculateMemberBreakdowns, calculateSettlements } from '../../utils/calculations';
 import { formatCurrency } from '../../utils/formatters';
@@ -7,7 +7,6 @@ import { useEffect, useMemo, useState } from 'react';
 import confetti from 'canvas-confetti';
 import { Avatar } from '../ui/Avatar';
 import { useLocale, t } from '../../hooks/useLocale';
-
 
 interface ActiveQrData {
   fromName: string;
@@ -27,6 +26,9 @@ export function DebtSettlementFlow() {
 
   const [paid, setPaid] = useState<Set<string>>(new Set());
   const [activeQr, setActiveQr] = useState<ActiveQrData | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  const members = Array.isArray(currentBill?.members) ? currentBill.members : [];
 
   const settlements = useMemo(
     () => (currentBill ? calculateSettlements(calculateMemberBreakdowns(currentBill)) : []),
@@ -72,12 +74,13 @@ export function DebtSettlementFlow() {
     );
   }
 
-  const isVnd = (currentBill.currency as string) === 'VND' || (currentBill.currency as string) === 'VNĐ';
-  const isRub = (currentBill.currency as string) === 'RUB';
+  const currency = (currentBill.currency as string) || 'VND';
+  const isRub = currency === 'RUB';
 
-  const copyToClipboard = (text: string, label: string) => {
-    navigator.clipboard.writeText(text);
-    alert(`${label} đã được sao chép!`);
+  const copyToClipboard = (text: string, key: string) => {
+    void navigator.clipboard.writeText(text);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 2000);
   };
 
   return (
@@ -107,25 +110,15 @@ export function DebtSettlementFlow() {
         <ul className="space-y-2">
           {settlements.map((settlement) => {
             const key = keyOf(settlement);
-            const from = currentBill.members.find((member) => member.id === settlement.fromMemberId);
-            const to = currentBill.members.find((member) => member.id === settlement.toMemberId);
+            const from = members.find((m) => m.id === settlement.fromMemberId);
+            const to = members.find((m) => m.id === settlement.toMemberId);
             const isPaid = paid.has(key);
-            const markerLabel = isPaid ? t('unmarkPaid', locale) : t('markPaid', locale);
 
-            // Lấy thông tin thanh toán: Lấy trực tiếp từ thành viên nhận tiền
-            const recipientMember = to;
-            const recipientBankName = recipientMember?.bank_name || '';
-            const recipientAccountNumber = recipientMember?.account_number || recipientMember?.bankInfo || '';
-            const recipientAccountHolder = recipientMember?.account_holder || recipientMember?.name || '';
-            const recipientPhoneNumber = recipientMember?.phone_number || '';
-            const recipientRussiaBank = recipientMember?.russia_bank || '';
-            const recipientCustomQrUrl = recipientMember?.custom_qr_url || '';
-
-            // Kiểm tra xem đã có thông tin nhận tiền chưa
+            const recipient = to;
             const hasPaymentInfo = Boolean(
-              recipientAccountNumber ||
-              (isRub && (recipientPhoneNumber || recipientRussiaBank || recipientCustomQrUrl)) ||
-              (!isRub && !isVnd && recipientCustomQrUrl)
+              recipient?.account_number ||
+              (isRub && (recipient?.phone_number || recipient?.russia_bank)) ||
+              recipient?.custom_qr_url
             );
 
             return (
@@ -135,84 +128,73 @@ export function DebtSettlementFlow() {
                   isPaid ? 'opacity-60' : ''
                 }`}
               >
-                {/* HÀNG TRÊN: Luồng tiền và nút check hoàn thành */}
                 <div className="flex items-center justify-between gap-2">
-                  {/* Cụm luồng tiền: Từ -> Tiền -> Đến */}
                   <div className="flex items-center gap-2 min-w-0 flex-1">
-                    {/* Người gửi */}
                     <div className="flex items-center gap-1.5 min-w-0 max-w-[35%] shrink-0">
                       <Avatar member={from} size="sm" className="shrink-0" />
-                      <span className="font-medium text-xs sm:text-sm truncate text-ink">{from?.name}</span>
+                      <span className="font-medium text-xs sm:text-sm truncate text-ink">
+                        {from?.name}
+                      </span>
                     </div>
 
-                    {/* Số tiền & Mũi tên */}
                     <div className="flex flex-col items-center shrink-0 px-1">
                       <span
                         className={`text-xs font-semibold num whitespace-nowrap ${
                           isPaid ? 'line-through text-ink-3' : 'text-accent'
                         }`}
                       >
-                        {formatCurrency(settlement.amount, currentBill.currency)}
+                        {formatCurrency(settlement.amount, currency)}
                       </span>
                       <ArrowRight className="w-3.5 h-3.5 text-ink-3" />
                     </div>
 
-                    {/* Người nhận */}
                     <div className="flex items-center gap-1.5 min-w-0 flex-1">
                       <Avatar member={to} size="sm" className="shrink-0" />
-                      <span className="font-medium text-xs sm:text-sm truncate text-ink">{to?.name}</span>
+                      <span className="font-medium text-xs sm:text-sm truncate text-ink">
+                        {to?.name}
+                      </span>
                     </div>
                   </div>
 
-                  {/* Nút check hoàn thành cố định ở góc phải */}
                   <button
                     type="button"
                     onClick={() => toggle(key)}
                     aria-pressed={isPaid}
-                    className={`icon-btn shrink-0 p-1 ${isPaid ? 'text-accent' : 'text-ink-3 hover:text-ink'}`}
-                    title={markerLabel}
-                    aria-label={markerLabel}
+                    className={`icon-btn shrink-0 p-1 ${
+                      isPaid ? 'text-accent' : 'text-ink-3 hover:text-ink'
+                    }`}
                   >
                     {isPaid ? <CheckCircle2 className="w-5 h-5" /> : <Circle className="w-5 h-5" />}
                   </button>
                 </div>
 
-                {/* HÀNG DƯỚI: Nút QR hoặc Dòng trạng thái chưa có thông tin */}
                 {!isPaid && (
                   <div className="flex items-center justify-between pt-1 border-t border-line/40 text-xs">
                     {hasPaymentInfo ? (
-                      <div className="flex items-center gap-2 w-full justify-between">
-                        <span className="text-[11px] text-ink-3 truncate">
-                          {recipientBankName ? `${recipientBankName} - ${recipientAccountNumber}` : ''}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setActiveQr({
-                              fromName: from?.name || 'Thành viên',
-                              toName: to?.name || 'Người nhận',
-                              amount: settlement.amount,
-                              bankName: recipientBankName,
-                              accountNumber: recipientAccountNumber,
-                              accountHolder: recipientAccountHolder,
-                              phoneNumber: recipientPhoneNumber,
-                              russiaBank: recipientRussiaBank,
-                              customQrUrl: recipientCustomQrUrl,
-                            })
-                          }
-                          className="btn btn-secondary text-xs py-1 px-2.5 flex items-center gap-1.5 text-accent border-accent/30 shrink-0 ml-auto"
-                          title={isRub ? "Thanh toán СБП / QR" : "Xem mã QR"}
-                        >
-                          <QrCode className="w-3.5 h-3.5" />
-                          <span>{isRub ? 'СБП/QR' : 'QR'}</span>
-                        </button>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setActiveQr({
+                            fromName: from?.name || '',
+                            toName: to?.name || '',
+                            amount: settlement.amount,
+                            bankName: to?.bank_name || '',
+                            accountNumber: to?.account_number || '',
+                            accountHolder: to?.account_holder || '',
+                            phoneNumber: to?.phone_number,
+                            russiaBank: to?.russia_bank,
+                            customQrUrl: to?.custom_qr_url,
+                          })
+                        }
+                        className="btn btn-secondary text-xs py-1 px-2.5 flex items-center gap-1.5 text-accent border-accent/30 shrink-0 ml-auto"
+                      >
+                        <QrCode className="w-3.5 h-3.5" />
+                        <span>{isRub ? 'СБП / QR' : 'VietQR'}</span>
+                      </button>
                     ) : (
-                      <div className="w-full text-right">
-                        <span className="text-[11px] text-amber-500/90 italic">
-                          {t('noPaymentInfoShort', locale, { name: to?.name || '' })}
-                        </span>
-                      </div>
+                      <span className="text-[11px] text-amber-500/90 italic ml-auto">
+                        {t('noPaymentInfoShort', locale, { name: to?.name || '' })}
+                      </span>
                     )}
                   </div>
                 )}
@@ -220,76 +202,90 @@ export function DebtSettlementFlow() {
             );
           })}
         </ul>
-
-        {allPaid && (
-          <p className="text-center text-sm font-semibold text-accent bg-accent-soft rounded-xl py-3">
-            {t('everyonePaid', locale)}
-          </p>
-        )}
       </section>
 
+      {/* Modal QR Code & Thông tin chuyển khoản */}
       {activeQr && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
           <div className="bg-surface border border-line rounded-2xl p-5 max-w-xs sm:max-w-sm w-full space-y-4 text-center relative shadow-2xl">
             <button
               type="button"
               onClick={() => setActiveQr(null)}
-              className="absolute top-3 right-3 icon-btn"
+              className="absolute top-3 right-3 icon-btn text-ink-3 hover:text-ink"
             >
               <X className="w-4 h-4" />
             </button>
 
-            {isRub ? (
-              <div className="space-y-4">
-                <h4 className="font-bold text-base">Thanh toán СБП / QR</h4>
-                {activeQr.customQrUrl && (
+            <h4 className="font-bold text-base">
+              {isRub ? 'Thanh toán СБП' : 'Mã chuyển khoản QR'}
+            </h4>
+
+            {activeQr.customQrUrl ? (
+              <div className="bg-white p-3 rounded-xl border border-line inline-block mx-auto">
+                <img
+                  src={activeQr.customQrUrl}
+                  alt="Custom QR"
+                  className="w-56 h-auto mx-auto rounded"
+                />
+              </div>
+            ) : isRub ? (
+              <div className="text-left bg-surface-2 p-3.5 rounded-xl text-xs space-y-2.5">
+                {activeQr.phoneNumber && (
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-ink-3 block text-[10px]">Số điện thoại / SBP</span>
+                      <span className="font-bold text-sm text-ink">{activeQr.phoneNumber}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(activeQr.phoneNumber!, 'phone')}
+                      className="icon-btn p-1.5 text-accent hover:bg-accent/10 rounded"
+                      title="Copy"
+                    >
+                      {copiedKey === 'phone' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                    </button>
+                  </div>
+                )}
+
+                {activeQr.russiaBank && (
+                  <div>
+                    <span className="text-ink-3 block text-[10px]">Ngân hàng</span>
+                    <span className="font-medium text-ink">{activeQr.russiaBank}</span>
+                  </div>
+                )}
+
+                <div className="pt-2 border-t border-line/60 flex items-center justify-between">
+                  <span className="text-ink-3">Số tiền cần chuyển:</span>
+                  <span className="font-bold text-sm text-accent">
+                    {Math.round(activeQr.amount).toLocaleString()} ₽
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="bg-white p-3 rounded-xl border border-line inline-block shadow-inner mx-auto">
                   <img
                     src={`https://img.vietqr.io/image/${activeQr.bankName || 'MB'}-${activeQr.accountNumber}-compact2.png?amount=${Math.round(
                       activeQr.amount
                     )}&addInfo=${encodeURIComponent(
                       (currentBill.title || 'FairShare').slice(0, 25)
-                    )}&accountName=${encodeURIComponent(activeQr.accountHolder)}`}
-                    alt="Mã VietQR"
+                    )}&accountName=${encodeURIComponent(activeQr.accountHolder || '')}`}
                     className="w-56 h-auto mx-auto rounded"
+                    alt="VietQR"
                   />
+                </div>
+                {activeQr.accountNumber && (
+                  <div className="text-xs text-ink-3 flex items-center justify-center gap-1.5">
+                    <span>STK: <b>{activeQr.accountNumber}</b> ({activeQr.bankName})</span>
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(activeQr.accountNumber, 'acc')}
+                      className="text-accent hover:underline inline-flex items-center gap-0.5"
+                    >
+                      {copiedKey === 'acc' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                    </button>
+                  </div>
                 )}
-                <div className="text-left bg-surface-2 p-3 rounded-xl text-xs space-y-2">
-                  {activeQr.phoneNumber && (
-                    <div className="flex justify-between items-center">
-                      <span>SĐT: <span className="font-bold">{activeQr.phoneNumber}</span></span>
-                      <button onClick={() => copyToClipboard(activeQr.phoneNumber || '', 'SĐT')} className="text-accent underline">Copy</button>
-                    </div>
-                  )}
-                  {activeQr.russiaBank && (
-                    <div>Ngân hàng: <span className="font-medium">{activeQr.russiaBank}</span></div>
-                  )}
-                  <div className="flex justify-between items-center">
-                    <span>Số tiền: <span className="font-bold">{activeQr.amount} ₽</span></span>
-                    <button onClick={() => copyToClipboard(activeQr.amount.toString(), 'Số tiền')} className="text-accent underline">Copy</button>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <h4 className="font-bold text-base">Thanh toán qua VietQR</h4>
-                <div className="bg-white p-3 rounded-xl border border-line inline-block shadow-inner mx-auto">
-                  <img
-                    src={`https://img.vietqr.io/image/${activeQr.bankName}-${activeQr.accountNumber}-compact2.png?amount=${Math.round(
-                      activeQr.amount
-                    )}&addInfo=${encodeURIComponent(
-                      (currentBill.title || 'FairShare').slice(0, 25)
-                    )}&accountName=${encodeURIComponent(activeQr.accountHolder)}`}
-                    alt="Mã VietQR"
-                    className="w-56 h-auto mx-auto rounded"
-                  />
-                </div>
-                <div className="text-left bg-surface-2 p-3 rounded-xl text-xs space-y-1">
-                  <div>Chủ TK: <span className="font-medium">{activeQr.accountHolder}</span></div>
-                  <div className="flex justify-between items-center">
-                    <span>STK: <span className="font-medium">{activeQr.accountNumber}</span></span>
-                    <button onClick={() => copyToClipboard(activeQr.accountNumber, 'STK')} className="text-accent underline">Copy</button>
-                  </div>
-                </div>
               </div>
             )}
           </div>

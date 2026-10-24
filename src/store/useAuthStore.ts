@@ -2,6 +2,7 @@
 import { create } from 'zustand';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import type { Session, User } from '@supabase/supabase-js';
+import { useBillStore } from './useBillStore';
 
 interface AuthState {
   user: User | null;
@@ -717,6 +718,10 @@ updatePassword: async (newPassword) => {
         provider: 'google',
         options: {
           redirectTo: window.location.origin,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'select_account', // Buộc Google luôn hiện hộp thoại chọn tài khoản
+          },
         },
       });
 
@@ -749,6 +754,7 @@ updatePassword: async (newPassword) => {
     if (!isSupabaseConfigured) {
       try {
         window.localStorage.removeItem(LOCAL_SESSION_KEY);
+        window.localStorage.removeItem('fairshare-profile-storage');
 
         set({
           user: null,
@@ -785,6 +791,14 @@ updatePassword: async (newPassword) => {
           error: error.message,
         });
         return;
+      }
+
+      // Dọn sạch cache thông tin tài khoản cũ tránh giữ lại dữ liệu khi đổi tài khoản
+      try {
+        window.localStorage.removeItem(LOCAL_SESSION_KEY);
+        window.localStorage.removeItem('fairshare-profile-storage');
+      } catch {
+        // Bỏ qua nếu localStorage bị hạn chế quyền truy cập
       }
 
       set({
@@ -853,6 +867,10 @@ if (isSupabaseConfigured && supabase) {
       !isCurrentlyRecovery &&
       !hasRecoveryParam()
     ) {
+
+      // Tự động kéo nhóm từ Cloud về ngay khi đăng nhập thành công
+      void useBillStore.getState().fetchUserGroups();
+      
       if (authTransitionTimeout !== undefined) {
         window.clearTimeout(authTransitionTimeout);
       }
@@ -907,6 +925,11 @@ if (isSupabaseConfigured && supabase) {
           Boolean(hasRecoveryParam() && data.session?.user),
         isLoading: false,
       });
+
+      // Nếu đã có session đăng nhập từ trước, kéo luôn nhóm từ Cloud về
+      if (data.session?.user) {
+        void useBillStore.getState().fetchUserGroups();
+      }
     })
     .catch((error: unknown) => {
       useAuthStore.setState({
