@@ -12,9 +12,9 @@ export function useRealtimeBills() {
   useEffect(() => {
     if (!user || !supabase) return;
 
-    // Kênh lắng nghe hóa đơn được chia sẻ đến user hiện tại
+    // Lắng nghe cả share mới/xóa và thay đổi xác nhận chuyển khoản của các bill.
     const channel = supabase
-      .channel(`realtime-shared-bills-${user.id}`)
+      .channel(`realtime-bills-${user.id}`)
       .on(
         'postgres_changes',
         {
@@ -51,6 +51,30 @@ export function useRealtimeBills() {
           schema: 'public',
           table: 'bill_shares',
           filter: `receiver_id=eq.${user.id}`,
+        },
+        () => {
+          void fetchUserBills();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'bill_shares',
+          filter: `sender_id=eq.${user.id}`,
+        },
+        () => {
+          void fetchUserBills();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'bills',
+          filter: `user_id=eq.${user.id}`,
         },
         () => {
           void fetchUserBills();

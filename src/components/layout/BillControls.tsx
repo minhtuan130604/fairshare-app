@@ -1,215 +1,120 @@
-import { useState } from 'react';
-import { RotateCcw, Sparkles } from 'lucide-react';
+import { RotateCcw, Coins } from 'lucide-react';
 import { useBillStore } from '../../store/useBillStore';
 import { useLocale, t } from '../../hooks/useLocale';
 
-const TAX_PRESETS = [0, 5, 8, 10] as const;
-const TIP_PRESETS = [0, 5, 10, 15] as const;
+type Currency = 'VND' | 'RUB';
 
-const MIN_PERCENT = 0;
-const MAX_PERCENT = 100;
-
-function normalizePercent(value: number): number {
-  if (!Number.isFinite(value)) return MIN_PERCENT;
-
-  return Math.min(MAX_PERCENT, Math.max(MIN_PERCENT, value));
-}
-
-function Segmented<T extends string | number>({
-  options,
-  value,
-  onChange,
-  label,
-}: {
-  options: { value: T; label: string; title?: string }[];
-  value: T;
-  onChange: (value: T) => void;
-  label: string;
-}) {
-  return (
-    <div
-      role="group"
-      aria-label={label}
-      className="grid grid-flow-col auto-cols-fr gap-1 p-1 bg-surface-2 rounded-xl"
-    >
-      {options.map((option) => {
-        const active = option.value === value;
-
-        return (
-          <button
-            key={option.value}
-            type="button"
-            title={option.title}
-            aria-pressed={active}
-            onClick={() => onChange(option.value)}
-            className={`py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
-              active
-                ? 'bg-surface text-accent shadow-sm'
-                : 'text-ink-2 hover:text-ink'
-            }`}
-          >
-            {option.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function PercentageControl({
-  id,
-  label,
-  value,
-  presets,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  value: number;
-  presets: readonly number[];
-  onChange: (value: number) => void;
-}) {
-  const [draft, setDraft] = useState<string | null>(null);
-
-  const displayedValue = draft ?? String(value);
-
-  function handleChange(rawValue: string) {
-    setDraft(rawValue);
-
-    // Allow an empty field while the user is editing.
-    if (rawValue.trim() === '') return;
-
-    const parsed = Number(rawValue);
-    if (!Number.isFinite(parsed)) return;
-
-    onChange(normalizePercent(parsed));
-  }
-
-  function handleBlur() {
-    if (draft === null || draft.trim() === '') {
-      onChange(MIN_PERCENT);
-      setDraft(null);
-      return;
-    }
-
-    const parsed = Number(draft);
-    onChange(normalizePercent(parsed));
-    setDraft(null);
-  }
-
-  return (
-    <div className="space-y-2">
-      <label
-        htmlFor={id}
-        className="block text-sm font-medium text-ink-2"
-      >
-        {label}
-      </label>
-
-      <Segmented
-        label={label}
-        value={value}
-        onChange={(nextValue) => {
-          setDraft(null);
-          onChange(nextValue);
-        }}
-        options={presets.map((preset) => ({
-          value: preset,
-          label: `${preset}%`,
-        }))}
-      />
-
-      <div className="relative">
-        <input
-          id={id}
-          type="number"
-          inputMode="decimal"
-          value={displayedValue}
-          onChange={(event) => handleChange(event.target.value)}
-          onBlur={handleBlur}
-          min={MIN_PERCENT}
-          max={MAX_PERCENT}
-          step="0.1"
-          className="field num w-full pr-10"
-          aria-label={label}
-        />
-
-        <span
-          aria-hidden="true"
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-ink-3"
-        >
-          %
-        </span>
-      </div>
-    </div>
-  );
-}
+const CURRENCIES: { code: Currency; label: string }[] = [
+  { code: 'VND', label: 'VND (₫)' },
+  { code: 'RUB', label: 'RUB (₽)' },
+];
 
 export function BillControls() {
-  const {
-    currentBill,
-    updateTax,
-    updateTip,
-    loadDemoData,
-    resetCurrentBill,
-  } = useBillStore();
-
+  const store = useBillStore() as any;
+  const { currentBill, resetCurrentBill, setBillMode } = store;
   const { locale } = useLocale();
 
   if (!currentBill) return null;
 
+  const isReadOnly = Boolean(currentBill.isSharedBill);
+
+  const handleCurrencyChange = (newCurrency: Currency) => {
+    if (isReadOnly || currentBill.currency === newCurrency) return;
+
+    // Lưu cờ đánh dấu người dùng đã chủ động chọn loại tiền này
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('fairshare_user_selected_currency', newCurrency);
+    }
+
+    // Cập nhật dứt điểm vào Store
+    if (typeof store.updateCurrentBill === 'function') {
+      store.updateCurrentBill({ currency: newCurrency });
+    } else if (typeof store.setCurrency === 'function') {
+      store.setCurrency(newCurrency);
+    } else if (typeof store.updateCurrency === 'function') {
+      store.updateCurrency(newCurrency);
+    }
+  };
+
   return (
     <section
-      className="card p-5 space-y-5"
-      aria-labelledby="bill-controls-title"
+      className="card p-4 space-y-4"
+      aria-label={t('billControlsTitle', locale)}
     >
-      <div>
-        <h2
-          id="bill-controls-title"
-          className="text-base font-semibold"
-        >
-          {t('billControlsTitle', locale)}
-        </h2>
+      {/* Chọn chế độ: Hóa đơn lẻ vs Nhóm hóa đơn */}
+      <div
+        className="rounded-2xl border border-emerald-400/30 bg-emerald-400/10 p-1.5 shadow-lg shadow-emerald-950/20"
+        role="group"
+        aria-label="Chế độ hóa đơn"
+      >
+        <div className="grid grid-cols-2 gap-1">
+          <button
+            type="button"
+            onClick={() => setBillMode('SINGLE')}
+            aria-pressed={currentBill.mode !== 'TIMELINE'}
+            disabled={isReadOnly}
+            className={`rounded-xl px-3 py-3 text-sm font-bold transition cursor-pointer ${
+              currentBill.mode !== 'TIMELINE'
+                ? 'bg-emerald-400 text-[#07110d] shadow-md'
+                : 'text-emerald-100 hover:bg-white/5'
+            }`}
+          >
+            {t('billModeSingle', locale)}
+          </button>
 
-        <p className="text-sm text-ink-3">
-          {t('billControlsSubtitle', locale)}
-        </p>
+          <button
+            type="button"
+            onClick={() => setBillMode('TIMELINE')}
+            aria-pressed={currentBill.mode === 'TIMELINE'}
+            disabled={isReadOnly}
+            className={`rounded-xl px-3 py-3 text-sm font-bold transition cursor-pointer ${
+              currentBill.mode === 'TIMELINE'
+                ? 'bg-emerald-400 text-[#07110d] shadow-md'
+                : 'text-emerald-100 hover:bg-white/5'
+            }`}
+          >
+            {t('billModeTimeline', locale)}
+          </button>
+        </div>
       </div>
 
-      <PercentageControl
-        id="tax"
-        label={t('taxLabel', locale)}
-        value={currentBill.taxPercent}
-        presets={TAX_PRESETS}
-        onChange={updateTax}
-      />
+      {/* Thanh điều khiển: Tiền tệ VND & RUB và Nút làm mới */}
+      <div className="pt-3 border-t border-line flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Coins className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span className="text-xs text-ink-3 hidden sm:inline">{t('currencyLabel', locale)}:</span>
+          <div className="flex rounded-xl bg-surface-2 p-1 border border-line">
+            {CURRENCIES.map((curr) => {
+              const isActive = currentBill.currency === curr.code;
+              return (
+                <button
+                  key={curr.code}
+                  type="button"
+                  onClick={() => handleCurrencyChange(curr.code)}
+                  disabled={isReadOnly}
+                  className={`px-3 py-1 text-xs font-semibold rounded-lg transition cursor-pointer font-mono ${
+                    isActive
+                      ? 'bg-emerald-500 text-neutral-950 font-bold shadow'
+                      : 'text-ink-3 hover:text-ink-1'
+                  }`}
+                >
+                  {curr.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
-      <PercentageControl
-        id="tip"
-        label={t('serviceLabel', locale)}
-        value={currentBill.tipPercent}
-        presets={TIP_PRESETS}
-        onChange={updateTip}
-      />
-
-      <div className="pt-4 border-t border-line flex flex-col sm:flex-row gap-2">
-        <button
-          type="button"
-          onClick={loadDemoData}
-          className="btn btn-secondary flex-1 justify-center"
-        >
-          <Sparkles className="w-4 h-4" aria-hidden="true" />
-          {t('demoData', locale)}
-        </button>
-
-        <button
-          type="button"
-          onClick={resetCurrentBill}
-          className="btn btn-secondary flex-1 justify-center"
-        >
-          <RotateCcw className="w-4 h-4" aria-hidden="true" />
-          {t('resetBill', locale)}
-        </button>
+        {!isReadOnly && (
+          <button
+            type="button"
+            onClick={resetCurrentBill}
+            className="btn btn-secondary text-xs py-1.5 px-3 inline-flex items-center gap-1.5 justify-center cursor-pointer"
+          >
+            <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
+            <span>{t('resetBill', locale)}</span>
+          </button>
+        )}
       </div>
     </section>
   );

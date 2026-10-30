@@ -168,4 +168,25 @@ describe('Bill Calculations', () => {
       expect(Math.abs(balance)).toBeLessThan(0.01);
     }
   });
+
+  it('should aggregate a three-stop timeline trip and settle cross-debts', () => {
+    const timelineBill: BillSession = {
+      ...mockBill,
+      mode: 'TIMELINE',
+      items: [],
+      expenses: [
+        { id: 'lunch', time: '12:00', title: 'Lunch', payerId: 'm1', participantIds: ['m1', 'm2', 'm3'], items: [{ id: 'lunch-item', name: 'Lunch', price: 300000, quantity: 1, assignedMemberIds: [] }], taxPercent: 0, tipPercent: 0 },
+        { id: 'milk-tea', time: '14:30', title: 'Milk tea', payerId: 'm2', participantIds: ['m1', 'm2'], items: [{ id: 'milk-tea-item', name: 'Milk tea', price: 120000, quantity: 1, assignedMemberIds: [] }], taxPercent: 0, tipPercent: 0 },
+        { id: 'photo', time: '16:00', title: 'Photobooth', payerId: 'm3', participantIds: ['m1', 'm2', 'm3'], items: [{ id: 'photo-item', name: 'Photobooth', price: 180000, quantity: 1, assignedMemberIds: [] }], taxPercent: 0, tipPercent: 0 },
+      ],
+    };
+    const breakdowns = calculateMemberBreakdowns(timelineBill);
+    expect(breakdowns.find((b) => b.memberId === 'm1')?.netBalance).toBeCloseTo(80000, 5);
+    expect(breakdowns.find((b) => b.memberId === 'm2')?.netBalance).toBeCloseTo(-100000, 5);
+    expect(breakdowns.find((b) => b.memberId === 'm3')?.netBalance).toBeCloseTo(20000, 5);
+    expect(calculateSettlements(breakdowns)).toEqual([
+      { fromMemberId: 'm2', toMemberId: 'm1', amount: 80000 },
+      { fromMemberId: 'm2', toMemberId: 'm3', amount: 20000 },
+    ]);
+  });
 });

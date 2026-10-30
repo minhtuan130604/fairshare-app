@@ -1,0 +1,6 @@
+error TS5083: Cannot read file 'c:/Users/thu04/Downloads/fairshair-app-gemini-503-fixed/fairshair-app/;/tsconfig.json'.
+error TS5083: Cannot read file 'c:/Users/thu04/Downloads/fairshair-app-gemini-503-fixed/fairshair-app/type/tsconfig.json'.
+error TS5083: Cannot read file 'c:/Users/thu04/Downloads/fairshair-app-gemini-503-fixed/fairshair-app/tsc-final.txt;/tsconfig.json'.
+error TS5083: Cannot read file 'c:/Users/thu04/Downloads/fairshair-app-gemini-503-fixed/fairshair-app/exit/tsconfig.json'.
+error TS5083: Cannot read file '/b/tsconfig.json'.
+error TS5083: Cannot read file 'c:/Users/thu04/Downloads/fairshair-app-gemini-503-fixed/fairshair-app/0/tsconfig.json'.

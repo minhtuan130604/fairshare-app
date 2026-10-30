@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback } from 'react';
 import {
   X,
@@ -23,6 +24,7 @@ import { useProfileStore } from '../../store/useProfileStore';
 import { useLocale, t } from '../../hooks/useLocale';
 import { supabase } from '../../lib/supabase';
 import type { MemberGroup, Member } from '../../types/bill';
+import { RUSSIA_BANKS } from '../../constants/banks';
 
 const VN_BANKS = [
   { code: 'MBBANK', name: 'MB Bank (Quân Đội)' },
@@ -35,18 +37,6 @@ const VN_BANKS = [
   { code: 'TPB', name: 'TPBank' },
   { code: 'STB', name: 'Sacombank' },
   { code: 'HDB', name: 'HDBank' },
-];
-
-const RU_BANKS = [
-  'Сбербанк (Sberbank)',
-  'Т-Банк (Tinkoff)',
-  'Альфа-Банк (Alfa-Bank)',
-  'ВТБ (VTB)',
-  'Райффайзенбанк (Raiffeisen)',
-  'Газпромбанк (Gazprombank)',
-  'Совкомбанк (Sovcombank)',
-  'Яндекс Банк (Yandex)',
-  'Озон Банк (Ozon)',
 ];
 
 interface UserDashboardModalProps {
@@ -62,8 +52,11 @@ export interface FriendProfile {
   avatar_url?: string;
   bank_name?: string;
   account_number?: string;
+  account_holder?: string;
   phone_number?: string;
   russia_bank?: string;
+  russia_account_holder?: string;
+  russia_qr_url?: string;
   friendship_id: string;
 }
 
@@ -134,19 +127,18 @@ export function UserDashboardModal({ isOpen, onClose, defaultTab = 'bills' }: Us
   const [bankName, setBankName] = useState(profile?.bank_name || '');
   const [accountNumber, setAccountNumber] = useState(profile?.account_number || '');
   const [accountHolder, setAccountHolder] = useState(profile?.account_holder || '');
+  const [russiaAccountHolder, setRussiaAccountHolder] = useState(profile?.russia_account_holder || profile?.account_holder || '');
   const [phoneNumber, setPhoneNumber] = useState(profile?.phone_number || '');
   const [russiaBank, setRussiaBank] = useState(profile?.russia_bank || '');
-  const [customQrUrl, setCustomQrUrl] = useState(profile?.custom_qr_url || '');
+  const [russiaQrUrl, setRussiaQrUrl] = useState(profile?.russia_qr_url || '');
   const [billsSubTab, setBillsSubTab] = useState<'my' | 'shared'>('my');
 
   const [showVnSection, setShowVnSection] = useState(
     Boolean(profile?.bank_name || profile?.account_number) || locale === 'vi'
   );
   const [showRuSection, setShowRuSection] = useState(
-    Boolean(profile?.phone_number || profile?.russia_bank) || locale === 'ru'
+    Boolean(profile?.phone_number || profile?.russia_bank || profile?.russia_account_holder || profile?.russia_qr_url) || locale === 'ru'
   );
-  const [showQrSection, setShowQrSection] = useState(Boolean(profile?.custom_qr_url));
-
   const [newPassword, setNewPassword] = useState('');
   const [accountMessage, setAccountMessage] = useState('');
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
@@ -198,12 +190,15 @@ export function UserDashboardModal({ isOpen, onClose, defaultTab = 'bills' }: Us
       if (validIds.length > 0) {
         const { data: profilesData } = await supabase
           .from('profiles')
-          .select('id, display_name, avatar_url, bank_name, account_number, phone_number, russia_bank')
+          .select('id, display_name, avatar_url, bank_name, account_number, account_holder, phone_number, russia_bank, russia_account_holder, russia_qr_url, custom_qr_url')
           .in('id', validIds);
 
         const profileMap = new Map((profilesData || []).map((p) => [p.id, p]));
 
-        const combinedFriends: FriendProfile[] = acceptedTargetIds.map((item) => {
+        const uniqueAcceptedFriends = Array.from(
+          new Map(acceptedTargetIds.map((item) => [item.id || item.email, item])).values()
+        );
+        const combinedFriends: FriendProfile[] = uniqueAcceptedFriends.map((item) => {
           const p = profileMap.get(item.id);
           return {
             id: item.id,
@@ -240,13 +235,13 @@ export function UserDashboardModal({ isOpen, onClose, defaultTab = 'bills' }: Us
       setBankName(profile.bank_name || '');
       setAccountNumber(profile.account_number || '');
       setAccountHolder(profile.account_holder || '');
+      setRussiaAccountHolder(profile.russia_account_holder || profile.account_holder || '');
       setPhoneNumber(profile.phone_number || '');
       setRussiaBank(profile.russia_bank || '');
-      setCustomQrUrl(profile.custom_qr_url || '');
+      setRussiaQrUrl(profile.russia_qr_url || '');
 
       if (profile.bank_name || profile.account_number) setShowVnSection(true);
-      if (profile.phone_number || profile.russia_bank) setShowRuSection(true);
-      if (profile.custom_qr_url) setShowQrSection(true);
+      if (profile.phone_number || profile.russia_bank || profile.russia_account_holder || profile.russia_qr_url) setShowRuSection(true);
     }
   }, [profile]);
 
@@ -263,8 +258,28 @@ export function UserDashboardModal({ isOpen, onClose, defaultTab = 'bills' }: Us
       return;
     }
 
+    if (
+      friendsList.some((friend) => friend.email.toLowerCase() === targetEmail) ||
+      pendingRequests.some((request) => request.email.toLowerCase() === targetEmail)
+    ) {
+      setAccountMessage(t('alreadyInFriends', locale));
+      setTimeout(() => setAccountMessage(''), 3000);
+      return;
+    }
+
     setIsSendingRequest(true);
     try {
+      const { data: existingRequests, error: existingError } = await supabase
+        .from('friendships')
+        .select('id, status')
+        .eq('user_id', user.id)
+        .eq('friend_email', targetEmail)
+        .in('status', ['pending', 'accepted']);
+      if (existingError) throw existingError;
+      if (existingRequests?.length) {
+        throw new Error(t('alreadyInFriends', locale));
+      }
+
       const { error } = await supabase.from('friendships').insert({
         user_id: user.id,
         friend_email: targetEmail,
@@ -285,7 +300,37 @@ export function UserDashboardModal({ isOpen, onClose, defaultTab = 'bills' }: Us
   const handleRespondRequest = async (id: string, status: 'accepted' | 'rejected') => {
     if (!supabase || !user) return;
     try {
-      await supabase.from('friendships').update({ status, friend_id: user.id }).eq('id', id);
+      if (status === 'accepted') {
+        const { data: request, error: requestError } = await supabase
+          .from('friendships')
+          .select('user_id, friend_id')
+          .eq('id', id)
+          .maybeSingle();
+        if (requestError) throw requestError;
+
+        const senderId = request?.user_id;
+        if (senderId) {
+          const { data: existingFriendship, error: existingError } = await supabase
+            .from('friendships')
+            .select('id')
+            .eq('status', 'accepted')
+            .or(`and(user_id.eq.${senderId},friend_id.eq.${user.id}),and(user_id.eq.${user.id},friend_id.eq.${senderId})`)
+            .maybeSingle();
+          if (existingError) throw existingError;
+          if (existingFriendship) {
+            const { error: deleteError } = await supabase.from('friendships').delete().eq('id', id);
+            if (deleteError) throw deleteError;
+            await loadFriendshipsAndProfiles();
+            return;
+          }
+        }
+      }
+
+      const { error } = await supabase
+        .from('friendships')
+        .update({ status, friend_id: user.id })
+        .eq('id', id);
+      if (error) throw error;
       await loadFriendshipsAndProfiles();
     } catch (err) {
       console.error(err);
@@ -333,9 +378,11 @@ export function UserDashboardModal({ isOpen, onClose, defaultTab = 'bills' }: Us
         bank_name: bankName || profile?.bank_name || '',
         account_number: accountNumber || profile?.account_number || '',
         account_holder: accountHolder || profile?.account_holder || '',
+        russia_account_holder: russiaAccountHolder || accountHolder || profile?.russia_account_holder || profile?.account_holder || '',
         phone_number: phoneNumber || profile?.phone_number || '',
         russia_bank: russiaBank || profile?.russia_bank || '',
-        custom_qr_url: customQrUrl || profile?.custom_qr_url || '',
+        custom_qr_url: '',
+        russia_qr_url: russiaQrUrl || profile?.russia_qr_url || '',
         avatar_url: base64,
       });
       syncProfileToMember();
@@ -347,27 +394,29 @@ export function UserDashboardModal({ isOpen, onClose, defaultTab = 'bills' }: Us
     }
   };
 
-  const handleUploadQrImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUploadRussiaQrImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     try {
       const compressedQr = await compressImage(file, 600, 0.75);
-      setCustomQrUrl(compressedQr);
+      setRussiaQrUrl(compressedQr);
       await saveProfile({
         display_name: displayName || profile?.display_name || 'Tôi',
         bank_name: bankName || profile?.bank_name || '',
         account_number: accountNumber || profile?.account_number || '',
         account_holder: accountHolder || profile?.account_holder || '',
-        phone_number: phoneNumber || profile?.phone_number || '',
-        russia_bank: russiaBank || profile?.russia_bank || '',
-        custom_qr_url: compressedQr,
+        russia_account_holder: russiaAccountHolder,
+        phone_number: phoneNumber,
+        russia_bank: russiaBank,
+        custom_qr_url: '',
+        russia_qr_url: compressedQr,
         avatar_url: profile?.avatar_url || '',
       });
       syncProfileToMember();
       setAccountMessage(t('updateProfileSuccess', locale));
     } catch {
-      setAccountMessage('Lỗi tải mã QR');
+      setAccountMessage(t('avatarError', locale));
     } finally {
       setTimeout(() => setAccountMessage(''), 3000);
     }
@@ -383,9 +432,11 @@ export function UserDashboardModal({ isOpen, onClose, defaultTab = 'bills' }: Us
         bank_name: bankName,
         account_number: accountNumber,
         account_holder: accountHolder,
+        russia_account_holder: russiaAccountHolder,
         phone_number: phoneNumber,
         russia_bank: russiaBank,
-        custom_qr_url: customQrUrl,
+        custom_qr_url: '',
+        russia_qr_url: russiaQrUrl,
         avatar_url: profile?.avatar_url || '',
       });
       syncProfileToMember();
@@ -412,10 +463,12 @@ export function UserDashboardModal({ isOpen, onClose, defaultTab = 'bills' }: Us
       account_holder: accountHolder,
       phone_number: phoneNumber,
       russia_bank: russiaBank,
-      custom_qr_url: customQrUrl,
+      russia_account_holder: russiaAccountHolder,
+      custom_qr_url: '',
+      russia_qr_url: russiaQrUrl,
       avatar_url: profile?.avatar_url || '',
     });
-    syncProfileToMember();
+    useBillStore.getState().syncProfileToMember();
     setAccountMessage(t('updateProfileSuccess', locale));
     setTimeout(() => setAccountMessage(''), 3000);
   };
@@ -445,8 +498,8 @@ export function UserDashboardModal({ isOpen, onClose, defaultTab = 'bills' }: Us
   };
 
   const isVnActive = showVnSection || Boolean(bankName || accountNumber || accountHolder);
-  const isRuActive = showRuSection || Boolean(phoneNumber || russiaBank);
-  const isQrActive = showQrSection || Boolean(customQrUrl);
+  const isRuActive = showRuSection || Boolean(phoneNumber || russiaBank || russiaAccountHolder || russiaQrUrl);
+
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
@@ -657,7 +710,6 @@ export function UserDashboardModal({ isOpen, onClose, defaultTab = 'bills' }: Us
                                   ...bill,
                                   items: Array.isArray(bill.items) ? bill.items : [],
                                   members: Array.isArray(bill.members) ? bill.members : [],
-                                  // @ts-expect-error isSharedBill flag
                                   isSharedBill: true,
                                 },
                               });
@@ -687,8 +739,7 @@ export function UserDashboardModal({ isOpen, onClose, defaultTab = 'bills' }: Us
                                     ...bill,
                                     items: Array.isArray(bill.items) ? bill.items : [],
                                     members: Array.isArray(bill.members) ? bill.members : [],
-                                    // @ts-expect-error isSharedBill flag
-                                    isSharedBill: true,
+                                     isSharedBill: true,
                                   },
                                 });
                                 onClose();
@@ -1161,9 +1212,20 @@ export function UserDashboardModal({ isOpen, onClose, defaultTab = 'bills' }: Us
                     </div>
 
                     <div>
+                      <label className="block text-ink-2 mb-1">{t('russiaAccountHolderLabel', locale)}</label>
+                      <input
+                        type="text"
+                        value={russiaAccountHolder}
+                        onChange={(e) => setRussiaAccountHolder(e.target.value)}
+                        placeholder="IVAN I."
+                        className="field py-1.5 text-xs"
+                      />
+                    </div>
+
+                    <div>
                       <label className="block text-ink-2 mb-1">{t('bankRuLabel', locale)}</label>
                       <select
-                        value={RU_BANKS.includes(russiaBank) ? russiaBank : russiaBank ? 'OTHER' : ''}
+                        value={RUSSIA_BANKS.some((bank) => bank.value === russiaBank) ? russiaBank : russiaBank ? 'OTHER' : ''}
                         onChange={(e) => {
                           if (e.target.value !== 'OTHER') {
                             setRussiaBank(e.target.value);
@@ -1174,15 +1236,15 @@ export function UserDashboardModal({ isOpen, onClose, defaultTab = 'bills' }: Us
                         className="field py-1.5 text-xs bg-surface"
                       >
                         <option value="">{t('selectBankPlaceholder', locale)}</option>
-                        {RU_BANKS.map((b) => (
-                          <option key={b} value={b}>
-                            {b}
+                        {RUSSIA_BANKS.map((bank) => (
+                          <option key={bank.value} value={bank.value}>
+                            {bank.label}
                           </option>
                         ))}
                         <option value="OTHER">{t('otherBank', locale)}</option>
                       </select>
 
-                      {!RU_BANKS.includes(russiaBank) && russiaBank !== '' && (
+                      {!RUSSIA_BANKS.some((bank) => bank.value === russiaBank) && russiaBank !== '' && (
                         <input
                           type="text"
                           value={russiaBank === 'OTHER_BANK' ? '' : russiaBank}
@@ -1193,74 +1255,31 @@ export function UserDashboardModal({ isOpen, onClose, defaultTab = 'bills' }: Us
                       )}
                     </div>
                   </div>
-                </div>
-              )}
 
-              {/* QR SECTION */}
-              {isQrActive && (
-                <div className="p-4 bg-surface-2/60 border border-line rounded-xl space-y-3">
-                  <div className="flex items-center justify-between border-b border-line/60 pb-2">
-                    <span className="text-xs font-bold text-accent uppercase tracking-wider flex items-center gap-1.5">
-                      🖼️ {t('methodCustomQR', locale)}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCustomQrUrl('');
-                        setShowQrSection(false);
-                      }}
-                      className="text-xs text-rose-500 hover:text-rose-600 flex items-center gap-1 transition-colors px-2 py-0.5 rounded hover:bg-rose-500/10"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>{t('removePaymentCard', locale)}</span>
-                    </button>
-                  </div>
-
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleUploadQrImage}
-                    className="text-xs text-ink-2 block w-full file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:bg-accent file:text-white cursor-pointer"
-                  />
-                  {customQrUrl && (
-                    <div className="flex items-center gap-3 pt-1">
-                      <img
-                        src={customQrUrl}
-                        alt="Preview QR"
-                        className="w-24 h-24 rounded-lg border border-line object-contain bg-white shadow-sm"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCustomQrUrl('');
-                          void saveProfile({
-                            display_name: displayName,
-                            bank_name: bankName,
-                            account_number: accountNumber,
-                            account_holder: accountHolder,
-                            phone_number: phoneNumber,
-                            russia_bank: russiaBank,
-                            custom_qr_url: '',
-                            avatar_url: profile?.avatar_url || '',
-                          });
+                  <div className="border-t border-line/60 pt-3 space-y-2">
+                    <label className="block text-ink-2 text-xs">{t('uploadRussiaQr', locale)}</label>
+                    <input type="file" accept="image/*" onChange={handleUploadRussiaQrImage} className="text-xs text-ink-2 block w-full file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:bg-accent file:text-white cursor-pointer" />
+                    {russiaQrUrl && (
+                      <div className="flex items-center gap-3">
+                        <img src={russiaQrUrl} alt={t('paymentQrAlt', locale)} className="w-24 h-24 rounded-lg border border-line object-contain bg-white p-1" />
+                        <button type="button" onClick={() => {
+                          setRussiaQrUrl('');
+                          void saveProfile({ display_name: displayName, bank_name: bankName, account_number: accountNumber, account_holder: accountHolder, russia_account_holder: russiaAccountHolder, phone_number: phoneNumber, russia_bank: russiaBank, custom_qr_url: '', russia_qr_url: '', avatar_url: profile?.avatar_url || '' });
                           syncProfileToMember();
-                        }}
-                        className="text-xs text-rose-500 hover:underline"
-                      >
-                        {t('deleteQrImg', locale)}
-                      </button>
-                    </div>
-                  )}
+                        }} className="text-xs text-rose-500 hover:underline">{t('deleteQrImg', locale)}</button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
-              {!isVnActive && !isRuActive && !isQrActive && (
+              {!isVnActive && !isRuActive && (
                 <div className="text-center py-6 border border-dashed border-line rounded-xl">
                   <p className="text-xs text-ink-2">{t('noPaymentMethodConfigured', locale)}</p>
                 </div>
               )}
 
-              {(!isVnActive || !isRuActive || !isQrActive) && (
+              {(!isVnActive || !isRuActive) && (
                 <div className="pt-1">
                   <label className="block text-[11px] text-ink-3 uppercase font-semibold mb-2">
                     {t('addPaymentMethod', locale)}
@@ -1282,15 +1301,6 @@ export function UserDashboardModal({ isOpen, onClose, defaultTab = 'bills' }: Us
                         className="btn btn-secondary text-xs py-1.5 px-3 border-dashed hover:border-accent hover:text-accent"
                       >
                         + 🇷🇺 {t('methodRussiaSBP', locale)}
-                      </button>
-                    )}
-                    {!isQrActive && (
-                      <button
-                        type="button"
-                        onClick={() => setShowQrSection(true)}
-                        className="btn btn-secondary text-xs py-1.5 px-3 border-dashed hover:border-accent hover:text-accent"
-                      >
-                        + 🖼️ {t('methodCustomQR', locale)}
                       </button>
                     )}
                   </div>

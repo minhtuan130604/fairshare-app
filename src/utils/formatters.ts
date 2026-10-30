@@ -5,9 +5,7 @@ export const GENERIC_CURRENCY_SYMBOL = '$';
 
 export const CURRENCIES: Record<string, { code: CurrencyCode; symbol: string; name: string }> = {
   VND: { code: 'VND' as CurrencyCode, symbol: GENERIC_CURRENCY_SYMBOL, name: 'VND' },
-  USD: { code: 'USD' as CurrencyCode, symbol: GENERIC_CURRENCY_SYMBOL, name: 'USD' },
   RUB: { code: 'RUB' as CurrencyCode, symbol: GENERIC_CURRENCY_SYMBOL, name: 'RUB' },
-  CNY: { code: 'CNY' as CurrencyCode, symbol: GENERIC_CURRENCY_SYMBOL, name: 'CNY' },
 };
 
 export function formatCurrency(amount: number, currency: string = 'USD'): string {
@@ -23,6 +21,13 @@ export function formatCurrency(amount: number, currency: string = 'USD'): string
     return new Intl.NumberFormat('vi-VN', {
       style: 'currency',
       currency: 'VND',
+      maximumFractionDigits: 0,
+    }).format(amount);
+  }
+  if (code === 'RUB' || code === '₽') {
+    return new Intl.NumberFormat('ru-RU', {
+      style: 'currency',
+      currency: 'RUB',
       maximumFractionDigits: 0,
     }).format(amount);
   }

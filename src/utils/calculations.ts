@@ -1,4 +1,109 @@
-import type { BillSession, MemberBreakdown, SettlementTransaction } from '../types/bill';
+import type {
+  BillExpense,
+  BillSession,
+  Member,
+  MemberBreakdown,
+  SettlementTransaction,
+} from '../types/bill';
+
+/** Calculate one timeline expense. */
+export function calculateSingleExpenseBreakdown(
+  expense: BillExpense,
+  members: Member[],
+): MemberBreakdown[] {
+  const items = Array.isArray(expense.items) ? expense.items : [];
+  const participants = Array.isArray(expense.participantIds) ? expense.participantIds : [];
+  const subtotal = items.reduce((sum, item) => sum + (Number(item?.price) || 0) * (Number(item?.quantity) || 0), 0);
+  const totalTax = subtotal * ((Number(expense.taxPercent) || 0) / 100);
+  const totalTip = subtotal * ((Number(expense.tipPercent) || 0) / 100);
+
+  return members.map((member) => {
+    let memberSubtotal = 0;
+    for (const item of items) {
+      const assignedIds = Array.isArray(item.assignedMemberIds) && item.assignedMemberIds.length > 0
+        ? item.assignedMemberIds
+        : participants;
+      if (assignedIds.includes(member.id) && assignedIds.length > 0) {
+        memberSubtotal += ((Number(item.price) || 0) * (Number(item.quantity) || 0)) / assignedIds.length;
+      }
+    }
+    const proportion = subtotal > 0 ? memberSubtotal / subtotal : 0;
+    const taxAmount = totalTax * proportion;
+    const tipAmount = totalTip * proportion;
+    const totalOwed = memberSubtotal + taxAmount + tipAmount;
+    const totalPaidUpfront = member.id === expense.payerId ? subtotal + totalTax + totalTip : 0;
+    return {
+      memberId: member.id,
+      subtotal: memberSubtotal,
+      taxAmount,
+      tipAmount,
+      totalOwed,
+      totalPaidUpfront,
+      netBalance: totalPaidUpfront - totalOwed,
+    };
+  });
+}
+
+/** Aggregate all timeline expenses into one breakdown per member. */
+export function calculateTimelineBreakdowns(bill: BillSession): MemberBreakdown[] {
+  const members = Array.isArray(bill.members) ? bill.members : [];
+  const totals = new Map(members.map((member) => [member.id, {
+    memberId: member.id,
+    subtotal: 0,
+    taxAmount: 0,
+    tipAmount: 0,
+    totalOwed: 0,
+    totalPaidUpfront: 0,
+    netBalance: 0,
+  }]));
+  for (const expense of bill.expenses || []) {
+    for (const breakdown of calculateSingleExpenseBreakdown(expense, members)) {
+      const total = totals.get(breakdown.memberId);
+      if (!total) continue;
+      total.subtotal += breakdown.subtotal;
+      total.taxAmount += breakdown.taxAmount;
+      total.tipAmount += breakdown.tipAmount;
+      total.totalOwed += breakdown.totalOwed;
+      total.totalPaidUpfront += breakdown.totalPaidUpfront;
+      total.netBalance += breakdown.netBalance;
+    }
+  }
+  return Array.from(totals.values());
+}
+
+/** Calculate the bill total using only the active bill mode's source data. */
+export function calculateBillTotals(bill: BillSession): {
+  subtotal: number;
+  tax: number;
+  tip: number;
+  total: number;
+  itemCount: number;
+} {
+  if (bill.mode === 'TIMELINE') {
+    const expenses = Array.isArray(bill.expenses) ? bill.expenses : [];
+    const totals = expenses.reduce((result, expense) => {
+      const subtotal = (Array.isArray(expense.items) ? expense.items : []).reduce(
+        (sum, item) => sum + (Number(item?.price) || 0) * (Number(item?.quantity) || 0),
+        0,
+      );
+      result.subtotal += subtotal;
+      result.tax += subtotal * ((Number(expense.taxPercent) || 0) / 100);
+      result.tip += subtotal * ((Number(expense.tipPercent) || 0) / 100);
+      result.itemCount += Array.isArray(expense.items) ? expense.items.length : 0;
+      return result;
+    }, { subtotal: 0, tax: 0, tip: 0, itemCount: 0 });
+    return { ...totals, total: totals.subtotal + totals.tax + totals.tip };
+  }
+
+  const items = Array.isArray(bill.items) ? bill.items : [];
+  const subtotal = items.reduce(
+    (sum, item) => sum + (Number(item?.price) || 0) * (Number(item?.quantity) || 0),
+    0,
+  );
+  const tax = subtotal * ((Number(bill.taxPercent) || 0) / 100);
+  const tip = subtotal * ((Number(bill.tipPercent) || 0) / 100);
+  return { subtotal, tax, tip, total: subtotal + tax + tip, itemCount: items.length };
+}
 
 /**
  * Calculate proportional breakdown for each member
@@ -7,6 +112,10 @@ import type { BillSession, MemberBreakdown, SettlementTransaction } from '../typ
  */
 export function calculateMemberBreakdowns(bill: BillSession | null | undefined): MemberBreakdown[] {
   if (!bill) return [];
+
+  if (bill.mode === 'TIMELINE') {
+    return calculateTimelineBreakdowns(bill);
+  }
 
   const items = Array.isArray(bill.items) ? bill.items : [];
   const members = Array.isArray(bill.members) ? bill.members : [];
@@ -31,6 +140,7 @@ export function calculateMemberBreakdowns(bill: BillSession | null | undefined):
       taxAmount: 0,
       tipAmount: 0,
       totalOwed: 0,
+      totalPaidUpfront: 0,
       netBalance: 0,
     }));
   }
@@ -69,6 +179,7 @@ export function calculateMemberBreakdowns(bill: BillSession | null | undefined):
       taxAmount: memberTax,
       tipAmount: memberTip,
       totalOwed: memberTotal,
+      totalPaidUpfront,
       netBalance,
     });
   }

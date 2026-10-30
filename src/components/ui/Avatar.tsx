@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { Member } from '../../types/bill';
 
 export interface AvatarProps {
@@ -67,15 +68,20 @@ export function Avatar({
   };
 
   const currentSize = sizeClasses[size];
-  const resolvedAvatarUrl = avatarUrl || member?.avatar_url;
+  const resolvedAvatarUrl = avatarUrl?.trim() || member?.avatar_url?.trim();
   const resolvedName = name || member?.name || '';
   const initial = resolvedName.trim() ? resolvedName.trim().charAt(0).toUpperCase() : '?';
+  const [imageError, setImageError] = useState(false);
 
-  if (resolvedAvatarUrl) {
+  if (resolvedAvatarUrl && !imageError) {
     return (
       <img
         src={resolvedAvatarUrl}
         alt={resolvedName || 'Avatar'}
+        onError={(e) => {
+          (e.target as HTMLElement).style.display = 'none';
+          setImageError(true);
+        }}
         className={`${currentSize} rounded-full object-cover border border-line shrink-0 ${className}`}
       />
     );
@@ -85,7 +91,7 @@ export function Avatar({
 
   return (
     <div
-      className={`${currentSize} rounded-full flex items-center justify-center font-bold text-white shrink-0 ${bgClass} ${className}`}
+      className={`${currentSize} rounded-full flex items-center justify-center font-semibold text-emerald-400 shrink-0 ${bgClass} ${className}`}
     >
       {initial}
     </div>

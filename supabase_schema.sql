@@ -66,6 +66,25 @@ CREATE POLICY "Người dùng có thể chia sẻ hóa đơn" ON public.bill_sha
   FOR INSERT
   WITH CHECK (auth.uid() = sender_id);
 
+CREATE POLICY "Người nhận có thể cập nhật xác nhận hóa đơn" ON public.bills
+  FOR UPDATE
+  USING (
+    auth.uid() = user_id
+    OR EXISTS (
+      SELECT 1 FROM public.bill_shares
+      WHERE bill_shares.bill_id = bills.id
+        AND bill_shares.receiver_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    auth.uid() = user_id
+    OR EXISTS (
+      SELECT 1 FROM public.bill_shares
+      WHERE bill_shares.bill_id = bills.id
+        AND bill_shares.receiver_id = auth.uid()
+    )
+  );
+
 -- Trigger tự động cập nhật updated_at cho bills
 CREATE OR REPLACE FUNCTION public.update_updated_at_column()
 RETURNS TRIGGER AS $$

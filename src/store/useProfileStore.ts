@@ -12,6 +12,8 @@ export interface UserProfile {
   phone_number?: string;
   russia_bank?: string;
   custom_qr_url?: string;
+  russia_account_holder?: string;
+  russia_qr_url?: string;
   avatar_url?: string;
   updated_at?: string;
 }
@@ -42,17 +44,16 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   isLoading: false,
   error: null,
 
- fetchProfile: async () => {
+  fetchProfile: async () => {
     set({ isLoading: true, error: null });
     try {
-      // 1. Đọc ngay từ localStorage trước để lấy avatar/dữ liệu dự phòng
+      // 1. Đọc ngay từ localStorage trước để lấy dữ liệu tức thì
       const localRaw = localStorage.getItem(LOCAL_PROFILE_KEY);
       let localProfile: UserProfile | null = null;
       if (localRaw) {
         try {
           localProfile = JSON.parse(localRaw) as UserProfile;
           set({ profile: localProfile });
-          useBillStore.getState().syncProfileToMember();
         } catch (e) {
           console.error('Lỗi parse local profile:', e);
         }
@@ -73,18 +74,25 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
         }
 
         if (data) {
+          // TUYỆT ĐỐI KHÔNG FALLBACK russia_account_holder sang account_holder (VietQR)
           const profile: UserProfile = {
             id: data.id,
             display_name: data.display_name || localProfile?.display_name || '',
             bank_name: data.bank_name || localProfile?.bank_name || '',
             account_number: data.account_number || localProfile?.account_number || '',
             account_holder: data.account_holder || localProfile?.account_holder || '',
+            russia_account_holder:
+              data.russia_account_holder !== undefined && data.russia_account_holder !== null
+                ? data.russia_account_holder
+                : localProfile?.russia_account_holder || '',
             phone_number: data.phone_number || localProfile?.phone_number || '',
-            russia_bank: data.russia_bank || localProfile?.russia_bank || '',
+            russia_bank: data.russia_bank || localProfile?.russia_bank || 'sber',
             custom_qr_url: data.custom_qr_url || localProfile?.custom_qr_url || '',
+            russia_qr_url: data.russia_qr_url || localProfile?.russia_qr_url || '',
             avatar_url: data.avatar_url || localProfile?.avatar_url || '',
             updated_at: data.updated_at,
           };
+
           set({ profile, isLoading: false });
           localStorage.setItem(LOCAL_PROFILE_KEY, JSON.stringify(profile));
           useBillStore.getState().syncProfileToMember();
@@ -92,14 +100,14 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
         }
       }
 
-      // 3. Nếu Supabase không có data, dùng profile từ local nếu có
+      // 3. Nếu Supabase chưa có data, giữ nguyên localProfile
       if (localProfile) {
         set({ profile: localProfile, isLoading: false });
         useBillStore.getState().syncProfileToMember();
         return;
       }
 
-      // 4. Fallback mặc định khi mới đăng nhập lần đầu
+      // 4. Fallback mặc định khi tài khoản mới tinh
       if (authUser) {
         const defaultProfile: UserProfile = {
           id: authUser.id,
@@ -108,8 +116,10 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
           account_number: '',
           account_holder: '',
           phone_number: '',
-          russia_bank: '',
+          russia_bank: 'sber',
           custom_qr_url: '',
+          russia_account_holder: '',
+          russia_qr_url: '',
           avatar_url: '',
         };
         set({ profile: defaultProfile, isLoading: false });
@@ -139,26 +149,35 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       localStorage.setItem(LOCAL_PROFILE_KEY, JSON.stringify(updatedProfile));
       set({ profile: updatedProfile, isLoading: false });
 
-      // 2. Đồng bộ ngay sang Member trong hóa đơn hiện tại
+      // 2. Đồng bộ tức thì vào mảng Member của Hóa đơn hiện tại
       useBillStore.getState().syncProfileToMember();
 
-      // 3. Đồng bộ lên Cloud nếu có kết nối Supabase (bổ sung avatar_url)
+      // 3. Đẩy lên Supabase
       if (authUser && isSupabaseConfigured && supabase) {
-        try {
-          await supabase.from('profiles').upsert({
-            id: targetId,
-            display_name: data.display_name,
-            bank_name: data.bank_name,
-            account_number: data.account_number,
-            account_holder: data.account_holder,
-            phone_number: data.phone_number,
-            russia_bank: data.russia_bank,
-            custom_qr_url: data.custom_qr_url,
-            avatar_url: data.avatar_url,
-            updated_at: new Date().toISOString(),
-          });
-        } catch (cloudErr) {
-          console.warn('Lưu Supabase không thành công, đã lưu cục bộ:', cloudErr);
+        const payload: Record<string, any> = {
+          id: targetId,
+          display_name: data.display_name,
+          bank_name: data.bank_name,
+          account_number: data.account_number,
+          account_holder: data.account_holder,
+          phone_number: data.phone_number,
+          russia_bank: data.russia_bank,
+          custom_qr_url: data.custom_qr_url,
+          avatar_url: data.avatar_url,
+          updated_at: new Date().toISOString(),
+        };
+
+        // Gán chính xác trường Nga nếu có
+        if (data.russia_account_holder !== undefined) {
+          payload.russia_account_holder = data.russia_account_holder;
+        }
+        if (data.russia_qr_url !== undefined) {
+          payload.russia_qr_url = data.russia_qr_url;
+        }
+
+        const { error } = await supabase.from('profiles').upsert(payload);
+        if (error) {
+          console.warn('Lỗi lưu Supabase profiles:', error.message);
         }
       }
 

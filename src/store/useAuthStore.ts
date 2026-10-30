@@ -714,13 +714,20 @@ updatePassword: async (newPassword) => {
     set({ isLoading: true, error: null });
 
     try {
+      // TẠM THỜI ÉP BUỘC CHUYỂN HƯỚNG VỀ LOCALHOST ĐỂ TEST:
+      const redirectUrl = 'http://localhost:5173/';
+      
+      // KHI NÀO DEPLOY HOẶC DÙNG TRÊN VERCEL THÌ MỞ LẠI DÒNG NÀY:
+      // const redirectUrl = 'https://fairshair-app.vercel.app/';
+      // hoặc dùng động: const redirectUrl = `${window.location.origin}/`;
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin,
+          redirectTo: redirectUrl,
           queryParams: {
             access_type: 'offline',
-            prompt: 'select_account', // Buộc Google luôn hiện hộp thoại chọn tài khoản
+            prompt: 'select_account',
           },
         },
       });
@@ -733,9 +740,7 @@ updatePassword: async (newPassword) => {
         return false;
       }
 
-      // Supabase tự xử lý chuyển hướng OAuth trên trình duyệt.
       set({ isLoading: false, error: null });
-
       return true;
     } catch (error: unknown) {
       set({

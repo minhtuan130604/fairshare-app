@@ -1,6 +1,7 @@
 import Tesseract from 'tesseract.js';
 import { RECEIPT_LANGUAGES, type ReceiptLang, type ReceiptLangId } from './ocrLanguages';
 import type { OcrWord, ScannedItem } from './receiptParser';
+import type { BillCategory } from '../types/bill';
 
 interface TesseractWordData {
   text: string;
@@ -16,6 +17,8 @@ interface RecognizeData {
 
 interface GroqReceiptPayload {
   language?: unknown;
+  title?: unknown;
+  category?: unknown;
   items?: unknown;
   detectedTotal?: unknown;
 }
@@ -25,9 +28,11 @@ export type OcrProvider = 'gemini' | 'tesseract' | 'groq';
 export interface RecognizeResult {
   text: string;
   words: OcrWord[];
-  confidence: number; // 0-100; OCR engine confidence for Tesseract, not calibrated for AI results
+  confidence: number;
   items?: ScannedItem[];
   detectedTotal?: number | null;
+  title?: string;
+  category?: BillCategory;
   provider?: OcrProvider;
 }
 
@@ -75,8 +80,6 @@ async function sourceToBase64(
 
 /**
  * Đọc Groq key từ .env.
- * Hỗ trợ tên VITE_GEMINI_API_KEY cũ chỉ khi giá trị thực sự là Groq key (gsk_...).
- * Hàm này không gọi Gemini API.
  */
 function getGroqApiKey(): string | undefined {
   const env = import.meta.env as Record<string, string | undefined>;
@@ -86,17 +89,12 @@ function getGroqApiKey(): string | undefined {
 
   const legacyKey = env.VITE_GEMINI_API_KEY?.trim();
   if (legacyKey?.startsWith('gsk_')) {
-    console.warn(
-      '[OCR] Đang đọc Groq key từ VITE_GEMINI_API_KEY cũ. Nên chuyển key sang VITE_GROQ_API_KEY.',
-    );
     return legacyKey;
   }
 
   return undefined;
 }
 
-// Groq may return HTTP 429 when the organization reaches its output-token-per-minute limit.
-// Respect Retry-After or the wait interval stated in the error, then retry only once.
 function getGroqRetryDelayMs(response: Response, bodyText: string): number {
   const retryAfter = response.headers.get('retry-after');
   if (retryAfter) {
@@ -131,7 +129,7 @@ function isGroqRateLimitError(error: unknown): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// 2. Groq Vision: đọc từng dòng, giữ nguyên số lượng và đơn giá
+// 2. Groq Vision: bóc tách món ăn, nhận diện Category và Tiêu đề
 // ---------------------------------------------------------------------------
 async function callGroqVision(
   source: File | HTMLCanvasElement,
@@ -142,33 +140,38 @@ async function callGroqVision(
   onProgress('Đang gửi ảnh để phân tích...', 0.35);
 
   const prompt = `
-Bạn là hệ thống đọc hóa đơn nhà hàng/siêu thị. Đọc ảnh hóa đơn và trả về DUY NHẤT một JSON hợp lệ theo cấu trúc:
+Bạn là hệ thống đọc hóa đơn đa năng. Đọc ảnh hóa đơn và trả về DUY NHẤT một JSON hợp lệ theo cấu trúc:
 {
   "language": "vi",
+  "title": "Tên cửa hàng/nhà hàng/dịch vụ",
+  "category": "dining",
   "items": [
     { "name": "Ốc Hương", "quantity": 3, "price": 720000 }
   ],
   "detectedTotal": 2160000
 }
+
 Quy tắc bắt buộc:
-1. language chỉ là "vi", "en", "ru" hoặc "zh", tùy ngôn ngữ nhìn thấy trên hóa đơn.
-2. name là tên hàng hóa/món ăn đọc được từ hóa đơn. Bỏ số thứ tự ở cột đầu và không đưa tên đơn vị tính như kg, đĩa, bát, cái, lon, chai, шт vào tên, trừ khi đó là một phần thực sự của tên sản phẩm.
-3. Giữ MỖI dòng hàng thành một phần tử riêng trong items. Không cộng gộp các dòng trùng tên.
-4. quantity là số lượng được in trên hóa đơn. Giữ số thập phân như 7.2 hoặc 1.5 nếu hóa đơn ghi như vậy. Nếu không có cột số lượng hoặc số lượng không được ghi, dùng 1.
-5. price là đơn giá của một đơn vị tương ứng với quantity, KHÔNG phải thành tiền của cả dòng nếu hóa đơn hiển thị rõ đơn giá.
-6. Ví dụ: số lượng 7.2, đơn giá 650000, thành tiền 4680000 thì quantity = 7.2 và price = 650000.
-7. Nếu chỉ đọc được thành tiền của dòng mà không có đơn giá riêng nhưng số lượng đọc được rõ ràng, có thể tính đơn giá bằng thành tiền chia cho số lượng. Không đoán các chữ số bị mờ.
-8. Không nhầm số thứ tự, mã hàng, số bàn, ngày tháng, số điện thoại hoặc số hóa đơn thành quantity hoặc price.
-9. Bỏ qua dòng tiêu đề, địa chỉ, tạm tính, thuế VAT/НДС, tiền mặt, tiền thừa và các dòng không phải hàng hóa.
-10. detectedTotal là tổng thanh toán cuối cùng được in trên hóa đơn (TOTAL, ИТОГО, TỔNG CỘNG, Tiền thanh toán...). Nếu không đọc được rõ ràng, trả về null.
-11. quantity, price và detectedTotal phải là số JSON, không kèm ký hiệu tiền tệ hay dấu phân cách hàng nghìn. Không dùng chuỗi cho giá trị số.
-12. Nếu không chắc tên hoặc giá của một dòng, bỏ qua dòng đó thay vì bịa dữ liệu.
+1. language chỉ là "vi", "en", "ru" hoặc "zh", tùy ngôn ngữ trên hóa đơn.
+2. title là tên thương hiệu/nhà hàng/siêu thị/quán in trên đầu hóa đơn (Ví dụ: "Haidilao Hotpot", "WinMart", "Lotte Cinema"). Nếu không rõ, để trống "".
+3. category bắt buộc chọn đúng 1 trong các giá trị sau dựa vào ngữ cảnh:
+   - "dining": Quán ăn, nhà hàng, cafe, đồ uống, lẩu, nướng, bia, trà sữa, thức ăn nhanh.
+   - "shopping": Siêu thị, cửa hàng tiện lợi, quần áo, mỹ phẩm, đồ gia dụng, tạp hóa.
+   - "transport": Taxi, Grab, Yandex Go, xăng dầu, vé máy bay, vé tàu xe.
+   - "entertainment": Vé xem phim, karaoke, bida, bowling, khu vui chơi, quán bar/pub.
+   - "travel": Khách sạn, homestay, resort, tour du lịch, vé cáp treo/tham quan.
+   - "other": Hóa đơn chi phí khác.
+4. name là tên hàng hóa/món ăn. Bỏ số thứ tự và các đơn vị tính thừa (kg, đĩa, bát, cái, lon, chai, шт).
+5. quantity là số lượng. Giữ số thập phân nếu có (ví dụ 1.5 hoặc 0.8). Nếu không có, đặt là 1.
+6. price là đơn vị giá (đơn giá của 1 cái), KHÔNG lấy tổng tiền dòng nếu có đơn giá riêng.
+7. detectedTotal là tổng số tiền thanh toán cuối cùng của hóa đơn. Nếu không đọc được, trả về null.
+8. Bỏ qua các dòng tạm tính, thuế VAT/НДС, tiền khách đưa, tiền thừa.
+9. Dữ liệu số (quantity, price, detectedTotal) phải là kiểu number trong JSON, không kèm chữ hay ký hiệu tiền tệ.
 `.trim();
 
   let response: Response | null = null;
   let lastError = '';
 
-  // Ưu tiên gọi qua Supabase Edge Function để bảo mật API key
   const env = import.meta.env as Record<string, string | undefined>;
   const supabaseUrl = env.VITE_SUPABASE_URL;
   const supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY;
@@ -346,6 +349,12 @@ Quy tắc bắt buộc:
     syntheticLines.push(`${totalKeyword.toUpperCase()}   ${detectedTotal}`);
   }
 
+  // Chuẩn hóa Category hợp lệ
+  const validCategories: BillCategory[] = ['dining', 'shopping', 'transport', 'entertainment', 'travel', 'other'];
+  const categoryCandidate = typeof data.category === 'string' ? (data.category.toLowerCase().trim() as BillCategory) : 'dining';
+  const detectedCategory: BillCategory = validCategories.includes(categoryCandidate) ? categoryCandidate : 'dining';
+  const detectedTitle = typeof data.title === 'string' ? data.title.trim() : '';
+
   onProgress('Hoàn tất!', 1);
   return {
     result: {
@@ -354,6 +363,8 @@ Quy tắc bắt buộc:
       confidence: 0,
       items: scannedItems,
       detectedTotal,
+      title: detectedTitle,
+      category: detectedCategory,
       provider: 'groq',
     },
     lang: matchedLang,
@@ -388,7 +399,6 @@ function getWorker(
 
   workerPool.set(langs, workerPromise);
 
-  // Xóa cache nếu khởi tạo worker thất bại để lần quét sau có thể thử lại.
   void workerPromise.catch(() => {
     if (workerPool.get(langs) === workerPromise) workerPool.delete(langs);
   });
@@ -396,14 +406,13 @@ function getWorker(
   return workerPromise;
 }
 
-/** Tải trước Tesseract khi Groq không thể được dùng. */
 export async function prepareReceiptOcr(
   langs: ReceiptLang[],
   onProgress?: (label: string, value: number) => void,
   _locale?: string,
 ): Promise<void> {
   const online = typeof navigator !== 'undefined' && navigator.onLine;
-  if (online && getGroqApiKey()) {
+  if (online && (getGroqApiKey() || import.meta.env.VITE_SUPABASE_URL)) {
     onProgress?.('', 0);
     return;
   }
@@ -452,13 +461,12 @@ export async function recognizeReceiptWithLang(
 ): Promise<RecognizeResult> {
   const online = typeof navigator !== 'undefined' && navigator.onLine;
 
-  if (!forceLocal && online && getGroqApiKey()) {
+  if (!forceLocal && online && (getGroqApiKey() || import.meta.env.VITE_SUPABASE_URL)) {
     try {
       const groqOutput = await callGroqVision(canvas, onProgress);
       return groqOutput.result;
     } catch (error) {
       console.error('[OCR] Groq thất bại; đang chuyển sang Tesseract:', error);
-      // Sau khi tự retry một lần, không trả kết quả Tesseract sai lệch vì rate limit.
       if (isGroqRateLimitError(error)) throw error;
     }
   }
@@ -494,14 +502,11 @@ export async function recognizeReceiptWithLang(
     text: data.text,
     words,
     confidence: data.confidence,
+    category: 'dining',
     provider: 'tesseract',
   };
 }
 
-/**
- * API giữ tương thích với ScanReceiptModal.tsx:
- * (file, langs, onProgress, score, locale, forceLocal)
- */
 export async function recognizeReceipt(
   file: File,
   langs: ReceiptLang[],
@@ -511,27 +516,17 @@ export async function recognizeReceipt(
   forceLocal?: boolean,
 ): Promise<{ result: RecognizeResult; lang: ReceiptLang }> {
   const online = typeof navigator !== 'undefined' && navigator.onLine;
-  const apiKey = getGroqApiKey();
+  const hasGroqOrEdge = Boolean(getGroqApiKey() || import.meta.env.VITE_SUPABASE_URL);
 
-  if (forceLocal) {
-    console.info('[OCR] forceLocal=true; bỏ qua Groq và dùng Tesseract.');
-  } else if (!online) {
-    console.warn('[OCR] Trình duyệt offline; sẽ dùng Tesseract.');
-  } else if (!apiKey) {
-    console.warn('[OCR] Không tìm thấy Groq API key hợp lệ; sẽ dùng Tesseract.');
-  }
-
-  if (!forceLocal && online && apiKey) {
+  if (!forceLocal && online && hasGroqOrEdge) {
     try {
       return await callGroqVision(file, onProgress);
     } catch (error) {
       console.error('[OCR] Groq thất bại; chuyển sang Tesseract:', error);
-      // Không âm thầm dùng Tesseract sau rate limit: người dùng nên chờ và thử lại.
       if (isGroqRateLimitError(error)) throw error;
     }
   }
 
-  // Từ đây trở đi, kết quả sẽ có provider='tesseract'.
   onProgress('Đang chuẩn bị ảnh...', 0.05);
   const canvas = await preprocessImage(file, 1600);
   const scanLangs = langs.length > 0 ? langs : [RECEIPT_LANGUAGES.vi];

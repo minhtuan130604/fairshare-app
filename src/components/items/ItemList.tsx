@@ -1,4 +1,4 @@
-import { ShoppingBag, Trash2, Lock } from 'lucide-react';
+import { ShoppingBag, Trash2 } from 'lucide-react';
 import { useBillStore } from '../../store/useBillStore';
 import { ItemCard } from './ItemCard';
 import { AnimatePresence } from 'framer-motion';
@@ -17,7 +17,6 @@ export function ItemList() {
     (item) => !Array.isArray(item.assignedMemberIds) || item.assignedMemberIds.length === 0
   ).length;
 
-  // @ts-expect-error isSharedBill flag
   const isReadOnly = Boolean(currentBill.isSharedBill);
 
   const clearAllLabel =
@@ -29,14 +28,6 @@ export function ItemList() {
           ? '删除所有项目'
           : 'Xóa tất cả món';
 
-  const readOnlyBadgeLabel =
-    locale === 'en'
-      ? 'Read-only mode'
-      : locale === 'ru'
-        ? 'Только чтение'
-        : locale === 'zh'
-          ? '只读模式'
-          : 'Chế độ chỉ xem';
 
   const handleClearAll = () => {
     if (itemCount === 0 || isReadOnly) return;
@@ -63,12 +54,6 @@ export function ItemList() {
             {t('itemsTitle', locale, { count: itemCount })}
           </h2>
 
-          {isReadOnly && (
-            <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-500 border border-amber-500/20 shrink-0">
-              <Lock className="w-3 h-3" />
-              <span>{readOnlyBadgeLabel}</span>
-            </span>
-          )}
         </div>
 
         <p className="text-sm text-ink-3">

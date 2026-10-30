@@ -132,8 +132,6 @@ export const RECEIPT_LANGUAGES: Record<Exclude<ReceiptLangId, 'auto'>, ReceiptLa
 export function defaultLangForCurrency(currency: CurrencyCode): ReceiptLangId {
   switch (currency) {
     case 'RUB': return 'ru';
-    case 'USD':
-    case 'EUR': return 'en';
     case 'VND':
     default: return 'vi';
   }

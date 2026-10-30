@@ -1,6 +1,10 @@
+
+
 import React, { useState, useEffect } from 'react';
 import { useProfileStore } from '../../store/useProfileStore';
 import { useAuthStore } from '../../store/useAuthStore';
+import { RUSSIA_BANKS } from '../../constants/banks';
+import { useLocale, t } from '../../hooks/useLocale';
 
 interface ProfileModalProps {
   isOpen: boolean;
@@ -20,18 +24,10 @@ export const POPULAR_BANKS = [
   { id: 'agribank', name: 'Agribank (Ngân hàng Nông nghiệp và Phát triển Nông thôn VN)' },
 ];
 
-export const RUSSIA_BANKS = [
-  { id: 'sber', name: 'Сбербанк (Sberbank)' },
-  { id: 'tbank', name: 'Т-Банк (T-Bank / Tinkoff)' },
-  { id: 'alfa', name: 'Альфа-Банк (Alfa-Bank)' },
-  { id: 'vtb', name: 'ВТБ (VTB Bank)' },
-  { id: 'raiffeisen', name: 'Райффайзенбанк (Raiffeisen)' },
-  { id: 'gazprom', name: 'Газпромбанк (Gazprombank)' },
-];
-
 export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) => {
   const { profile, saveProfile, isLoading, error } = useProfileStore();
   const { user } = useAuthStore();
+  const { locale } = useLocale();
 
   const [displayName, setDisplayName] = useState('');
   const [bankName, setBankName] = useState('vcb');
@@ -41,7 +37,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
   // Russian payment fields (СБП)
   const [phoneNumber, setPhoneNumber] = useState('');
   const [russiaBank, setRussiaBank] = useState('sber');
-  const [customQrUrl, setCustomQrUrl] = useState('');
+  const [russiaAccountHolder, setRussiaAccountHolder] = useState('');
+  const [russiaQrUrl, setRussiaQrUrl] = useState('');
 
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -54,7 +51,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
       setAccountHolder(profile?.account_holder || '');
       setPhoneNumber(profile?.phone_number || '');
       setRussiaBank(profile?.russia_bank || 'sber');
-      setCustomQrUrl(profile?.custom_qr_url || '');
+      setRussiaAccountHolder(profile?.russia_account_holder || profile?.account_holder || '');
+      setRussiaQrUrl(profile?.russia_qr_url || '');
       setSuccessMessage(null);
     }
   }, [isOpen, profile, user]);
@@ -73,7 +71,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
     const reader = new FileReader();
     reader.onload = (event) => {
       if (typeof event.target?.result === 'string') {
-        setCustomQrUrl(event.target.result);
+        setRussiaQrUrl(event.target.result);
       }
     };
     reader.readAsDataURL(file);
@@ -90,7 +88,9 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
       account_holder: accountHolder,
       phone_number: phoneNumber,
       russia_bank: russiaBank,
-      custom_qr_url: customQrUrl,
+      russia_account_holder: russiaAccountHolder,
+      russia_qr_url: russiaQrUrl,
+      custom_qr_url: '',
     });
 
     if (success) {
@@ -222,6 +222,19 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
 
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
+                  {t('russiaAccountHolderLabel', locale)}
+                </label>
+                <input
+                  type="text"
+                  value={russiaAccountHolder}
+                  onChange={(e) => setRussiaAccountHolder(e.target.value)}
+                  placeholder="IVAN I."
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none transition"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1">
                   Ngân hàng nhận (РФ)
                 </label>
                 <select
@@ -229,9 +242,9 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
                   onChange={(e) => setRussiaBank(e.target.value)}
                   className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none transition"
                 >
-                  {RUSSIA_BANKS.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.name}
+                  {RUSSIA_BANKS.map((bank) => (
+                    <option key={bank.value} value={bank.value}>
+                      {bank.label}
                     </option>
                   ))}
                 </select>
@@ -239,41 +252,19 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
             </div>
           </div>
 
-          {/* Section: Custom QR Image Upload */}
+          {/* Section: Russia SBP QR Upload */}
           <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 space-y-3">
-            <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
-              📸 Tải lên Mã QR cá nhân (Tùy chọn quốc tế / MoMo / ZaloPay / Sber...)
-            </h4>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Nếu bạn có ảnh mã QR tĩnh riêng, hãy tải lên để bạn bè có thể quét trực tiếp trên mọi hóa đơn.
-            </p>
-
+            <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">{t('uploadRussiaQr', locale)}</h4>
             <div className="flex items-center gap-4">
-              {customQrUrl ? (
-                <div className="relative w-16 h-16 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 bg-white shrink-0">
-                  <img src={customQrUrl} alt="Custom QR Preview" className="w-full h-full object-cover" />
-                </div>
+              {russiaQrUrl ? (
+                <img src={russiaQrUrl} alt="Russia SBP QR Preview" className="w-20 h-20 rounded-lg border border-slate-200 dark:border-slate-700 bg-white object-contain p-1" />
               ) : (
-                <div className="w-16 h-16 rounded-lg border border-dashed border-slate-300 dark:border-slate-600 flex items-center justify-center text-slate-400 text-xs shrink-0">
-                  Chưa có
-                </div>
+                <div className="w-20 h-20 rounded-lg border border-dashed border-slate-300 dark:border-slate-600 flex items-center justify-center text-slate-400 text-xs">Chưa có</div>
               )}
-
               <div className="flex-1 space-y-2">
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileUpload}
-                  className="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 dark:file:bg-emerald-950/60 dark:file:text-emerald-400 transition cursor-pointer"
-                />
-                {customQrUrl && (
-                  <button
-                    type="button"
-                    onClick={() => setCustomQrUrl('')}
-                    className="text-xs text-red-600 hover:underline font-medium"
-                  >
-                    Xóa ảnh QR hiện tại
-                  </button>
+                <input type="file" accept="image/*" onChange={handleFileUpload} className="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 cursor-pointer" />
+                {russiaQrUrl && (
+                  <button type="button" onClick={() => setRussiaQrUrl('')} className="text-xs text-red-600 hover:underline font-medium">{t('deleteQrImg', locale)}</button>
                 )}
               </div>
             </div>

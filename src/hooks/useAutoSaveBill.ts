@@ -4,7 +4,7 @@ import { useAuthStore } from '../store/useAuthStore';
 
 export type SaveStatus = 'idle' | 'unsaved' | 'saving' | 'saved' | 'error';
 
-export function useAutoSaveBill(debounceMs = 1500) {
+export function useAutoSaveBill(debounceMs = 600) {
   const { currentBill, saveBillToCloud, syncError } = useBillStore();
   const { user } = useAuthStore();
 
@@ -12,21 +12,22 @@ export function useAutoSaveBill(debounceMs = 1500) {
   const timeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const hideSavedTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const lastSavedJsonRef = useRef<string>('');
+  const lastBillIdRef = useRef<string>('');
 
   useEffect(() => {
+    // 1. Không lưu nếu chưa đăng nhập hoặc không có hóa đơn
     if (!user || !currentBill) {
       setStatus('idle');
       return;
     }
 
-    // Không tự động lưu nếu đây là hóa đơn được bạn bè chia sẻ (chế độ chỉ xem)
-    // @ts-expect-error isSharedBill flag
-    if (currentBill.isSharedBill) {
+    // 2. Không tự động lưu nếu đây là hóa đơn được chia sẻ (chế độ chỉ xem)
+    const isShared = Boolean(currentBill.isSharedBill || (currentBill as any).shareId);
+    if (isShared) {
       setStatus('idle');
       return;
     }
 
-    // Kiểm tra an toàn xem items và members có phải là mảng hợp lệ không
     const hasItems = Array.isArray(currentBill.items) && currentBill.items.length > 0;
     const hasMembers = Array.isArray(currentBill.members) && currentBill.members.length > 0;
     const hasContent = hasItems || hasMembers;
@@ -36,15 +37,40 @@ export function useAutoSaveBill(debounceMs = 1500) {
       return;
     }
 
-    const currentJson = JSON.stringify(currentBill);
+    // 3. Chỉ trích xuất phần nội dung thực tế cần lưu, bỏ qua metadata thời gian
+    const extractCorePayload = (bill: typeof currentBill) => ({
+      id: bill.id,
+      title: bill.title || '',
+      currency: bill.currency || 'VND',
+      mode: bill.mode || 'SINGLE',
+      paidByMemberId: bill.paidByMemberId || '',
+      taxPercent: bill.taxPercent || 0,
+      tipPercent: bill.tipPercent || 0,
+      splitMode: bill.splitMode || 'ITEMIZED',
+      items: Array.isArray(bill.items) ? bill.items : [],
+      members: Array.isArray(bill.members) ? bill.members : [],
+      expenses: Array.isArray(bill.expenses) ? bill.expenses : [],
+      transfer_confirmations: bill.transfer_confirmations || {},
+      settled_transfers: Array.isArray(bill.settled_transfers) ? bill.settled_transfers : [],
+    });
 
-    // Lần đầu tiên nạp hóa đơn, ghi nhận mốc dữ liệu mà không gọi lưu lại
+    const currentJson = JSON.stringify(extractCorePayload(currentBill));
+
+    // Đổi sang hóa đơn khác: reset mốc so sánh
+    if (lastBillIdRef.current !== currentBill.id) {
+      lastBillIdRef.current = currentBill.id;
+      lastSavedJsonRef.current = currentJson;
+      setStatus('idle');
+      return;
+    }
+
+    // Lần đầu tải hóa đơn hiện tại
     if (!lastSavedJsonRef.current) {
       lastSavedJsonRef.current = currentJson;
       return;
     }
 
-    // Nếu dữ liệu không có gì thay đổi so với lần lưu gần nhất
+    // Dữ liệu giống hệt bản đã lưu
     if (currentJson === lastSavedJsonRef.current) {
       return;
     }
@@ -54,7 +80,6 @@ export function useAutoSaveBill(debounceMs = 1500) {
     if (timeoutRef.current !== null) {
       window.clearTimeout(timeoutRef.current);
     }
-
     if (hideSavedTimeoutRef.current !== null) {
       window.clearTimeout(hideSavedTimeoutRef.current);
     }
@@ -62,16 +87,17 @@ export function useAutoSaveBill(debounceMs = 1500) {
     timeoutRef.current = window.setTimeout(async () => {
       setStatus('saving');
       try {
+        lastSavedJsonRef.current = currentJson;
         await saveBillToCloud(currentBill);
+
         const latestError = useBillStore.getState().syncError;
 
         if (!latestError) {
-          lastSavedJsonRef.current = currentJson;
           setStatus('saved');
 
           hideSavedTimeoutRef.current = window.setTimeout(() => {
             setStatus('idle');
-          }, 2500);
+          }, 1800);
         } else {
           setStatus('error');
         }
@@ -83,6 +109,9 @@ export function useAutoSaveBill(debounceMs = 1500) {
     return () => {
       if (timeoutRef.current !== null) {
         window.clearTimeout(timeoutRef.current);
+      }
+      if (hideSavedTimeoutRef.current !== null) {
+        window.clearTimeout(hideSavedTimeoutRef.current);
       }
     };
   }, [currentBill, user, debounceMs, saveBillToCloud]);

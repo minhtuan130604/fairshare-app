@@ -1,4 +1,4 @@
-import { Trash2, Users, AlertCircle, Check } from 'lucide-react';
+import { Trash2, AlertCircle, Check } from 'lucide-react';
 import { useBillStore } from '../../store/useBillStore';
 import { formatCurrency } from '../../utils/formatters';
 import { motion } from 'framer-motion';
@@ -10,7 +10,7 @@ interface ItemCardProps {
 }
 
 export function ItemCard({ itemId }: ItemCardProps) {
-  const { currentBill, removeItem, toggleMemberOnItem, assignAllMembersToItem } = useBillStore();
+  const { currentBill, removeItem, updateItem, toggleMemberOnItem, assignAllMembersToItem } = useBillStore();
   const { locale } = useLocale();
 
   if (!currentBill) return null;
@@ -26,8 +26,11 @@ export function ItemCard({ itemId }: ItemCardProps) {
   const isUnassigned = assignedMemberIds.length === 0;
   const pricePerPerson = isUnassigned ? 0 : totalPrice / assignedMemberIds.length;
 
-  // @ts-expect-error isSharedBill flag
   const isReadOnly = Boolean(currentBill?.isSharedBill);
+
+  const deselectAllMembersFromItem = () => {
+    updateItem(item.id, { assignedMemberIds: [] });
+  };
 
   return (
     <motion.article
@@ -84,16 +87,25 @@ export function ItemCard({ itemId }: ItemCardProps) {
             )}
           </span>
 
-          {/* Ẩn nút chọn tất cả nếu đang ở chế độ chỉ đọc */}
+          {/* Cặp nút Chọn tất cả / Bỏ chọn */}
           {!isReadOnly && members.length > 0 && (
-            <button
-              type="button"
-              onClick={() => assignAllMembersToItem(item.id)}
-              className="inline-flex items-center gap-1 text-xs font-semibold text-accent hover:underline"
-            >
-              <Users className="w-3.5 h-3.5" />
-              {t('selectAll', locale)}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => assignAllMembersToItem(item.id)}
+                className="text-xs font-semibold text-accent hover:underline"
+              >
+                {t('selectAllItems', locale)}
+              </button>
+              <span className="text-xs text-ink-3">|</span>
+              <button
+                type="button"
+                onClick={deselectAllMembersFromItem}
+                className="text-xs font-medium text-ink-3 hover:text-danger hover:underline"
+              >
+                {t('deselectAllItems', locale)}
+              </button>
+            </div>
           )}
         </div>
 

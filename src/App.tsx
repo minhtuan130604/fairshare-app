@@ -1,29 +1,51 @@
 import { useEffect, useState } from 'react';
+import { CheckCircle2, Pencil, Plus } from 'lucide-react';
+import { HistoryPage } from './pages/HistoryPage';
+import { GroupsPage } from './pages/GroupsPage';
+import { ProfilePage } from './pages/ProfilePage';
+import { AdminPage } from './pages/AdminPage';
+import { SpendingAnalyticsDashboard } from './components/analytics/SpendingAnalyticsDashboard';
+
+import { OnboardingGuide } from './components/layout/OnboardingGuide';
+import { EmptyBillState } from './components/layout/EmptyBillState';
 import { useBillStore } from './store/useBillStore';
 import { useAuthStore } from './store/useAuthStore';
 import { LandingPage } from './components/auth/LandingPage';
 import { ResetPasswordPage } from './components/auth/ResetPasswordPage';
 import { Header } from './components/layout/Header';
+import { Footer } from './components/layout/Footer';
+import { SupportWidget } from './components/support/SupportWidget';
 import { BillControls } from './components/layout/BillControls';
 import { MemberManager } from './components/members/MemberManager';
 import { QuickAddForm } from './components/items/QuickAddForm';
 import { ItemList } from './components/items/ItemList';
+import { TimelineExpenseList } from './components/items/TimelineExpenseList';
+
 import { ScanReceiptModal } from './components/items/ScanReceiptModal';
 import { LiveReceiptCard } from './components/summary/LiveReceiptCard';
 import { DebtSettlementFlow } from './components/summary/DebtSettlementFlow';
 import { ActionButtons } from './components/summary/ActionButtons';
 import { ShareModal } from './components/summary/ShareModal';
 import { LuckyRouletteModal } from './components/summary/LuckyRouletteModal';
-import { useLocale, t } from './hooks/useLocale.tsx';
+import { useLocale, t } from './hooks/useLocale';
 import { useAutoSaveBill } from './hooks/useAutoSaveBill';
 import { useProfileStore } from './store/useProfileStore';
 import { MobileNav } from './components/layout/MobileNav';
 import { useRealtimeBills } from './hooks/useRealtimeBills';
+import { supabase } from './lib/supabase';
+
+import type { ActivePage } from './components/layout/Header';
 
 type Tab = 'members' | 'items' | 'summary';
 
+const WORKSPACE_COPY = {
+  vi: { workspace: 'WORKSPACE', billTitlePlaceholder: 'Đặt tên hóa đơn...', editTitle: 'Sửa tên hóa đơn', newBill: 'Hóa đơn mới', items: 'món', aiReady: 'AI sẵn sàng' },
+  en: { workspace: 'WORKSPACE', billTitlePlaceholder: 'Name this bill...', editTitle: 'Edit bill title', newBill: 'New bill', items: 'items', aiReady: 'AI Ready' },
+  ru: { workspace: 'РАБОЧЕЕ ПРОСТРАНСТВО', billTitlePlaceholder: 'Название счёта...', editTitle: 'Изменить название счёта', newBill: 'Новый счёт', items: 'позиций', aiReady: 'ИИ готов' },
+  zh: { workspace: '工作区', billTitlePlaceholder: '为账单命名...', editTitle: '编辑账单名称', newBill: '新建账单', items: '个项目', aiReady: 'AI 已就绪' },
+} as const;
+
 export function App() {
-  // Hook được gọi vô điều kiện; hook tự xử lý trường hợp chưa đăng nhập.
   useRealtimeBills();
 
   const {
@@ -32,89 +54,150 @@ export function App() {
     isSyncing,
     fetchUserBills,
     importBillFromURL,
-    loadDemoData,
+    initializeNewBill,
+    updateBillTitle,
   } = useBillStore();
 
   const { user, isTransitioning } = useAuthStore();
   const userId = user?.id;
   const { fetchProfile } = useProfileStore();
   const { locale } = useLocale();
+  const workspaceCopy = WORKSPACE_COPY[locale];
   const { status: saveStatus } = useAutoSaveBill();
 
-  const [isGuest, setIsGuest] = useState(false);
+
   const [isShareOpen, setIsShareOpen] = useState(false);
   const [isRouletteOpen, setIsRouletteOpen] = useState(false);
   const [isScanOpen, setIsScanOpen] = useState(false);
   const [mobileTab, setMobileTab] = useState<Tab>('items');
+  const [activePage, setActivePage] = useState<ActivePage>('workspace');
+  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
+  const [isAdminAccount, setIsAdminAccount] = useState<boolean | null>(null);
 
-  // Xác định người dùng có đang mở liên kết khôi phục mật khẩu không.
   const [isResetPasswordRoute, setIsResetPasswordRoute] = useState(
-    () =>
-      new URLSearchParams(window.location.search).get('reset-password') === '1',
+    () => new URLSearchParams(window.location.search).get('reset-password') === '1',
   );
 
-  // Tự động tắt trạng thái khách khi phát hiện phiên đăng nhập.
+  // Lắng nghe Realtime trực tiếp cho hóa đơn đang mở
+  const currentBillId = currentBill?.id;
   useEffect(() => {
-    if (userId) {
-      setIsGuest(false);
+    if (!currentBillId || !supabase) return;
+
+    const client = supabase;
+    const channel = client
+      .channel(`bill-live-sync-${currentBillId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'bills',
+          filter: `id=eq.${currentBillId}`,
+        },
+        (payload: any) => {
+          const raw = payload.new?.data || payload.new || {};
+          const newConfirmations =
+            raw.transfer_confirmations || payload.new?.transfer_confirmations;
+          const newSettled = Array.isArray(raw.settled_transfers)
+            ? raw.settled_transfers
+            : payload.new?.settled_transfers;
+
+          if (newConfirmations || newSettled) {
+            useBillStore.setState((state) => {
+              if (!state.currentBill || state.currentBill.id !== currentBillId) return state;
+              return {
+                currentBill: {
+                  ...state.currentBill,
+                  transfer_confirmations: newConfirmations || state.currentBill.transfer_confirmations,
+                  settled_transfers: newSettled || state.currentBill.settled_transfers,
+                },
+              };
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void client.removeChannel(channel);
+    };
+  }, [currentBillId]);
+
+
+  // Kiểm tra quyền hạn Admin
+  useEffect(() => {
+    if (!userId || !supabase) {
+      setIsAdminAccount(false);
+      return;
     }
+
+    let mounted = true;
+    void (async () => {
+      try {
+        const { data } = await supabase
+          .from('app_admins')
+          .select('role')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+        if (mounted) {
+          setIsAdminAccount(Boolean(data));
+        }
+      } catch {
+        if (mounted) setIsAdminAccount(false);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
   }, [userId]);
 
-  // Tải lại hóa đơn cá nhân, hóa đơn được chia sẻ và hồ sơ khi tài khoản đăng nhập thay đổi.
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || isAdminAccount) return;
 
     void fetchUserBills();
     void fetchProfile();
-  }, [userId, fetchUserBills, fetchProfile]);
+  }, [userId, isAdminAccount, fetchUserBills, fetchProfile]);
 
-  // Đồng bộ giao diện sáng/tối với thẻ <html>.
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
-
     document
       .querySelector('meta[name="theme-color"]')
       ?.setAttribute('content', theme === 'dark' ? '#0f1715' : '#ffffff');
   }, [theme]);
 
-  // Nhập hóa đơn từ liên kết chia sẻ hoặc nạp dữ liệu mẫu cho khách/chưa đăng nhập.
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
     const billData = searchParams.get('bill');
 
-    if (billData) {
-      if (importBillFromURL(billData)) {
-        window.history.replaceState({}, '', window.location.pathname);
-      }
-    } else if (!currentBill && !userId) {
-      // Chỉ tải dữ liệu mẫu khi chưa có hóa đơn và chưa đăng nhập.
-      loadDemoData();
+    if (billData && importBillFromURL(billData)) {
+      window.history.replaceState({}, '', window.location.pathname);
     }
-    // Các hành động import/demo chỉ chạy khi trạng thái đăng nhập thay đổi.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
+  }, [importBillFromURL]);
 
-  // Kết thúc màn hình khôi phục và quay lại Landing Page.
+  useEffect(() => {
+  if (userId && !isAdminAccount && !currentBill) {
+    initializeNewBill();
+  }
+}, [userId, isAdminAccount, currentBill, initializeNewBill]);
+
   const finishPasswordReset = () => {
     window.history.replaceState({}, '', window.location.pathname);
     setIsResetPasswordRoute(false);
-    setIsGuest(false);
   };
 
-  // Ưu tiên xử lý liên kết khôi phục mật khẩu trước các màn hình khác.
   if (isResetPasswordRoute) {
     return <ResetPasswordPage onComplete={finishPasswordReset} />;
   }
 
-  // Hiển thị animation khi đăng nhập đang chuyển tiếp (đa ngôn ngữ).
-  if (isTransitioning) {
+  if (isTransitioning || (userId && isAdminAccount === null)) {
     return (
       <div className="min-h-screen bg-canvas text-ink flex flex-col items-center justify-center gap-5">
         <div className="relative flex h-16 w-16 items-center justify-center">
           <div className="absolute inset-0 rounded-full border-4 border-line border-t-accent animate-spin" />
           <span className="text-xl font-bold">FS</span>
         </div>
-
         <div className="text-center space-y-2">
           <h2 className="text-lg font-semibold animate-pulse">
             {t('welcomeTitle', locale)}
@@ -125,12 +208,18 @@ export function App() {
     );
   }
 
-  // Chưa đăng nhập và chưa chọn dùng thử: hiển thị Landing Page.
-  if (!user && !isGuest) {
-    return <LandingPage onContinueAsGuest={() => setIsGuest(true)} />;
+  if (!user) {
+  return <LandingPage />;
+}
+
+  if (isAdminAccount) {
+    return (
+      <div className="min-h-screen bg-canvas text-ink flex flex-col">
+        <AdminPage />
+      </div>
+    );
   }
 
-  // Chờ dữ liệu hóa đơn sẵn sàng.
   if (!currentBill) {
     return (
       <div className="min-h-screen bg-canvas text-ink flex items-center justify-center">
@@ -142,14 +231,15 @@ export function App() {
   const openShare = () => setIsShareOpen(true);
   const openRoulette = () => setIsRouletteOpen(true);
   const openScan = () => setIsScanOpen(true);
+  const handleNavigate = (page: ActivePage) => setActivePage(page);
 
   return (
-    <div className="min-h-screen bg-canvas text-ink pb-24 lg:pb-8 relative">
-      <Header />
+    <div className="min-h-screen bg-canvas text-ink flex flex-col relative">
+      <Header activePage={activePage} onNavigate={handleNavigate} />
 
-      {/* Chỉ báo trạng thái tự động lưu và đồng bộ đám mây đa ngôn ngữ. */}
+      {/* Trạng thái lưu cloud */}
       {(saveStatus || isSyncing) && (
-        <div className="fixed bottom-20 right-4 lg:bottom-4 z-40 bg-card/90 backdrop-blur border border-line text-xs px-3 py-1.5 rounded-full shadow-lg flex items-center gap-2 text-ink-2 pointer-events-none animate-fadeIn">
+        <div className="fixed bottom-6 left-6 z-40 bg-card/95 backdrop-blur border border-line text-xs px-3.5 py-2 rounded-full shadow-xl flex items-center gap-2 text-ink-2 pointer-events-none animate-fadeIn">
           {(saveStatus === 'saving' || (!saveStatus && isSyncing)) && (
             <>
               <span className="inline-block w-2 h-2 rounded-full bg-accent animate-ping" />
@@ -177,60 +267,207 @@ export function App() {
         </div>
       )}
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {/* Giao diện máy tính: 3 cột. */}
-        <div className="hidden lg:grid grid-cols-12 gap-6 items-start">
-          <div className="col-span-3 space-y-6">
-            <MemberManager />
-            <BillControls />
-          </div>
+      <div className="flex-1 pb-24 lg:pb-8">
+        {activePage === 'history' && (
+          <HistoryPage
+            onBack={() => setActivePage('workspace')}
+            onOpenBill={() => setActivePage('workspace')}
+          />
+        )}
 
-          <div className="col-span-5 space-y-6">
-            <QuickAddForm onScan={openScan} />
-            <ItemList />
-          </div>
+        {activePage === 'groups' && (
+          <GroupsPage onBack={() => setActivePage('workspace')} />
+        )}
 
-          <div className="col-span-4 space-y-6">
-            <LiveReceiptCard />
-            <DebtSettlementFlow />
-            <ActionButtons onShare={openShare} onRoulette={openRoulette} />
-          </div>
-        </div>
+        {activePage === 'analytics' && (
+          <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+            <SpendingAnalyticsDashboard />
+          </main>
+        )}
 
-        {/* Giao diện điện thoại: chuyển tab. */}
-        <div className="lg:hidden space-y-6">
-          {mobileTab === 'members' && (
-            <div className="space-y-6">
-              <MemberManager />
+        {activePage === 'profile' && (
+          <ProfilePage onBack={() => setActivePage('workspace')} />
+        )}
+
+        {activePage === 'workspace' && (
+          <main className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
+            <OnboardingGuide />
+
+            <section className="mb-6 mt-7">
+              <p className="text-[11px] font-semibold tracking-[0.24em] text-ink-3">
+                {workspaceCopy.workspace}
+              </p>
+              <div className="group mt-2 flex items-center gap-3">
+                <input
+                  type="text"
+                  value={currentBill.title}
+                  onChange={(event) => updateBillTitle(event.target.value)}
+                  placeholder={t('billTitlePlaceholder', locale)}
+                  disabled={Boolean(currentBill.isSharedBill)}
+                  aria-label={workspaceCopy.editTitle}
+                  className="min-w-0 flex-1 bg-transparent text-3xl font-semibold tracking-tight text-ink outline-none placeholder:text-ink-3/60 sm:text-4xl"
+                />
+                <Pencil
+                  aria-hidden="true"
+                  className="h-4 w-4 shrink-0 text-ink-3 opacity-50 transition-opacity group-focus-within:opacity-0"
+                />
+              </div>
+              {currentBill.isSharedBill && (
+                <p className="mt-2 text-xs text-amber-500/90">{t('readOnlyBillNotice', locale)}</p>
+              )}
+            </section>
+
+            <div className="mt-4">
               <BillControls />
             </div>
-          )}
 
-          {mobileTab === 'items' && (
-            <div className="space-y-6">
-              <QuickAddForm onScan={openScan} />
-              <ItemList />
+            {/* GIAO DIỆN DESKTOP (lg:grid) */}
+            <div className="mt-5 hidden items-start gap-5 lg:grid lg:grid-cols-2">
+              <div className="space-y-5">
+                {currentBill.mode === 'TIMELINE' ? (
+                  <TimelineExpenseList />
+                ) : (
+                  <>
+                    {currentBill.items.length === 0 && (
+                      <EmptyBillState
+                        onScan={openScan}
+                        onSelectItemsTab={() => setMobileTab('items')}
+                      />
+                    )}
+                    <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-[#0f1715]/80 p-4 shadow-lg shadow-black/10 backdrop-blur-md">
+                      <CheckCircle2 className="h-6 w-6 shrink-0 text-emerald-400" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-ink">
+                          {currentBill.title || workspaceCopy.billTitlePlaceholder}
+                        </p>
+                        <p className="mt-1 text-xs text-ink-3">
+                          {currentBill.items.length} {workspaceCopy.items}{' '}
+                          <span aria-hidden="true">•</span> {workspaceCopy.aiReady}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={initializeNewBill}
+                        className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-400/20 cursor-pointer"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        {workspaceCopy.newBill}
+                      </button>
+                    </div>
+
+                    {/* 1. Form thêm món ăn */}
+                    <QuickAddForm onScan={openScan} />
+
+                    {/* 2. Danh sách món ăn */}
+                    <ItemList />
+
+                    {/* 3. Tờ hóa đơn LiveReceiptCard */}
+                    <LiveReceiptCard />
+
+                    {/* 4. Quản lý thành viên */}
+                    <details className="group rounded-2xl border border-white/10 bg-[#0f1715]/80 p-4 backdrop-blur-md">
+                      <summary className="cursor-pointer list-none text-sm font-semibold text-emerald-100">
+                        {t('membersNav', locale)}
+                      </summary>
+                      <div className="mt-4">
+                        <MemberManager />
+                      </div>
+                    </details>
+                  </>
+                )}
+              </div>
+
+              {/* Cột phải: Chuyển khoản & Thao tác */}
+              <div className="space-y-5">
+                <DebtSettlementFlow />
+                <ActionButtons onShare={openShare} onRoulette={openRoulette} />
+              </div>
             </div>
-          )}
 
-          {mobileTab === 'summary' && (
-            <div className="space-y-6">
-              <LiveReceiptCard />
-              <DebtSettlementFlow />
-              <ActionButtons onShare={openShare} onRoulette={openRoulette} />
+            {/* GIAO DIỆN MOBILE (lg:hidden) */}
+            <div className="mt-5 space-y-6 lg:hidden">
+              {mobileTab === 'items' &&
+                currentBill.mode === 'SINGLE' &&
+                currentBill.items.length === 0 && (
+                  <EmptyBillState
+                    onScan={openScan}
+                    onSelectItemsTab={() => setMobileTab('items')}
+                  />
+                )}
+
+              {mobileTab === 'members' && (
+                <div className="space-y-6">
+                  <MemberManager />
+                </div>
+              )}
+
+              {mobileTab === 'items' && (
+                <div className="space-y-6">
+                  <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-[#0f1715]/80 p-4 shadow-lg shadow-black/10 backdrop-blur-md">
+                    <CheckCircle2 className="h-6 w-6 shrink-0 text-emerald-400" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-ink">
+                        {currentBill.title || workspaceCopy.billTitlePlaceholder}
+                      </p>
+                      <p className="mt-1 text-xs text-ink-3">
+                        {currentBill.items.length} {workspaceCopy.items}{' '}
+                        <span aria-hidden="true">•</span> {workspaceCopy.aiReady}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={initializeNewBill}
+                      className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-xs font-semibold text-emerald-300 cursor-pointer"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      {workspaceCopy.newBill}
+                    </button>
+                  </div>
+
+                  {currentBill.mode === 'TIMELINE' ? (
+                    <TimelineExpenseList />
+                  ) : (
+                    <>
+                      <QuickAddForm onScan={openScan} />
+                      <ItemList />
+                    </>
+                  )}
+                </div>
+              )}
+
+              {mobileTab === 'summary' && (
+                <div className="space-y-6">
+                  <LiveReceiptCard />
+                  <DebtSettlementFlow />
+                  <ActionButtons onShare={openShare} onRoulette={openRoulette} />
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      </main>
+          </main>
+        )}
+      </div>
 
-      {/* Thanh điều hướng chân trang trên thiết bị di động. */}
-      <MobileNav
+      {/* Thanh điều hướng cố định mép dưới chỉ dành cho Mobile */}
+     <MobileNav
         activeTab={mobileTab}
-        onTabChange={setMobileTab}
+        onTabChange={(tab) => {
+          setActivePage('workspace');
+          setMobileTab(tab);
+        }}
         onShareClick={openShare}
+        onOpenProfile={() => setActivePage('profile')}
       />
 
-      {/* Các cửa sổ chức năng dạng modal. */}
+      {/* Ẩn Footer trên mobile để không bị MobileNav che khuất; chỉ hiện trên Desktop */}
+      <div className="hidden lg:block">
+        <Footer onOpenFeedback={() => setIsFeedbackOpen(true)} />
+      </div>
+
+      <SupportWidget
+        isOpenExternal={isFeedbackOpen}
+        onCloseExternal={() => setIsFeedbackOpen(false)}
+      />
+
       <ScanReceiptModal isOpen={isScanOpen} onClose={() => setIsScanOpen(false)} />
       <ShareModal isOpen={isShareOpen} onClose={() => setIsShareOpen(false)} />
       <LuckyRouletteModal
