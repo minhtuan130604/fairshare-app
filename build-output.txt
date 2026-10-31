@@ -1,0 +1,19 @@
+
+> fairshare-app@0.0.0 build
+> tsc -b && vite build
+
+[36mvite v8.3.4 [32mbuilding client environment for production...[36m[39m
+transforming...
+✓ 2463 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                     1.49 kB │ gzip:   0.80 kB
+dist/assets/index-3RXnvGP0.css    105.89 kB │ gzip:  17.13 kB
+dist/assets/index-DPDdTA-L.js   1,109.95 kB │ gzip: 327.94 kB
+
+[33m[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
+[32m✓ built in 607ms[39m

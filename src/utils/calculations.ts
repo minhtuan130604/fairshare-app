@@ -46,7 +46,9 @@ export function calculateSingleExpenseBreakdown(
 
 /** Aggregate all timeline expenses into one breakdown per member. */
 export function calculateTimelineBreakdowns(bill: BillSession): MemberBreakdown[] {
-  const members = Array.isArray(bill.members) ? bill.members : [];
+  const members = Array.isArray(bill.timelineMembers)
+    ? bill.timelineMembers
+    : (Array.isArray(bill.members) ? bill.members : []);
   const totals = new Map(members.map((member) => [member.id, {
     memberId: member.id,
     subtotal: 0,

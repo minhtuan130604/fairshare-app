@@ -33,7 +33,13 @@ const getInitialProfile = (): UserProfile | null => {
   if (typeof window === 'undefined') return null;
   try {
     const raw = localStorage.getItem(LOCAL_PROFILE_KEY);
-    return raw ? JSON.parse(raw) : null;
+    const profile = raw ? (JSON.parse(raw) as UserProfile) : null;
+    // Profile cache luôn phải thuộc về một user cụ thể. Cache cũ/không có id bị loại bỏ.
+    if (!profile?.id) {
+      localStorage.removeItem(LOCAL_PROFILE_KEY);
+      return null;
+    }
+    return profile;
   } catch {
     return null;
   }
@@ -47,19 +53,26 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   fetchProfile: async () => {
     set({ isLoading: true, error: null });
     try {
-      // 1. Đọc ngay từ localStorage trước để lấy dữ liệu tức thì
+      const authUser = useAuthStore.getState().user;
+
+      // Không bao giờ hydrate profile của user khác (hoặc profile local không có owner).
       const localRaw = localStorage.getItem(LOCAL_PROFILE_KEY);
       let localProfile: UserProfile | null = null;
       if (localRaw) {
         try {
-          localProfile = JSON.parse(localRaw) as UserProfile;
-          set({ profile: localProfile });
+          const parsed = JSON.parse(localRaw) as UserProfile;
+          if (authUser?.id && parsed.id === authUser.id) {
+            localProfile = parsed;
+            set({ profile: localProfile });
+          } else {
+            localStorage.removeItem(LOCAL_PROFILE_KEY);
+            set({ profile: null });
+          }
         } catch (e) {
+          localStorage.removeItem(LOCAL_PROFILE_KEY);
           console.error('Lỗi parse local profile:', e);
         }
       }
-
-      const authUser = useAuthStore.getState().user;
 
       // 2. Tải từ Supabase nếu có kết nối
       if (authUser && isSupabaseConfigured && supabase) {
@@ -191,6 +204,6 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
 
   clearProfile: () => {
     localStorage.removeItem(LOCAL_PROFILE_KEY);
-    set({ profile: null, error: null });
+    set({ profile: null, error: null, isLoading: false });
   },
 }));

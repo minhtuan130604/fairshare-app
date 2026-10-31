@@ -1,6 +1,5 @@
 ﻿import { useState, useEffect, type FormEvent } from 'react';
 import {
-  Receipt,
   Sparkles,
   Users,
   Globe,
@@ -43,7 +42,7 @@ const LANDING_COPY = {
       'Chụp hóa đơn và AI tự động đọc từng món. Chạm để chọn người trả — thuế và tip được chia theo tỷ lệ. Không bảng tính phức tạp.',
     scanCta: 'Quét hóa đơn đầu tiên',
     howCta: 'Xem cách hoạt động',
-    freeTag: 'Miễn phí cho nhóm đến 8 người · Không cần thẻ tín dụng',
+    freeTag: 'Nhanh gọn · Tiện lợi · Không cần tải app',
     itemsDetected: 'AI đã nhận diện 5 món',
     whoPaysWhat: 'Ai trả bao nhiêu',
     taxTipIncluded: 'Đã gồm thuế 7% & tip',
@@ -59,8 +58,8 @@ const LANDING_COPY = {
     stat2Label: 'Tốc độ bóc tách siêu tốc',
     stat3Val: '4 Ngôn ngữ',
     stat3Label: 'Việt · Anh · Nga · Trung',
-    stat4Val: '100% Free',
-    stat4Label: 'Không phí ẩn, không quảng cáo',
+    stat4Val: 'Đồng bộ Realtime',
+    stat4Label: 'Tự động cập nhật tức thì',
     navHow: 'Cách hoạt động',
     navFeatures: 'Tính năng',
     navAudience: 'Dành cho ai',
@@ -81,7 +80,7 @@ const LANDING_COPY = {
     featSub: 'Mọi công cụ bạn cần để giữ sự minh bạch tài chính trong các buổi tụ tập.',
     feat1Title: 'Nhận diện OCR đa ngôn ngữ',
     feat1Desc: 'Đọc hiểu chuẩn xác hóa đơn tiếng Việt, tiếng Anh, tiếng Nga và tiếng Trung.',
-    feat2Title: 'Hóa đơn chặng dài ngày (Timeline Trips)',
+    feat2Title: 'Nhóm hóa đơn (Timeline Trips)',
     feat2Desc: 'Nhóm nhiều hóa đơn khách sạn, vé xe, ăn uống suốt chuyến du lịch và chốt nợ 1 lần.',
     feat3Title: 'Báo cáo tài chính & Cạ cứng',
     feat3Desc: 'Phân tích cơ cấu chi tiêu hàng tháng và tự động xếp hạng bạn bè đi ăn cùng nhiều nhất.',
@@ -172,7 +171,7 @@ const LANDING_COPY = {
       'Snap a receipt and AI reads every line item. Tap who had what — tax and tip are shared proportionally. No spreadsheets.',
     scanCta: 'Scan your first receipt',
     howCta: 'See how it works',
-    freeTag: 'Free for groups up to 8 · No credit card required',
+    freeTag: 'Fast · Convenient · No app download needed',
     itemsDetected: 'AI detected 5 items',
     whoPaysWhat: 'Who pays what',
     taxTipIncluded: 'Includes 7% tax & tip',
@@ -188,8 +187,8 @@ const LANDING_COPY = {
     stat2Label: 'Lightning-fast OCR speed',
     stat3Val: '4 Languages',
     stat3Label: 'VI · EN · RU · ZH Support',
-    stat4Val: '100% Free',
-    stat4Label: 'No hidden fees or ads',
+    stat4Val: 'Realtime Sync',
+    stat4Label: 'Updates instantly across devices',
     navHow: 'How it works',
     navFeatures: 'Features',
     navAudience: 'Who it’s for',
@@ -210,7 +209,7 @@ const LANDING_COPY = {
     featSub: 'Everything you need to keep group finances crystal clear and friction-free.',
     feat1Title: 'Multi-Language AI OCR',
     feat1Desc: 'Accurately parses Vietnamese, English, Russian, and Chinese receipts.',
-    feat2Title: 'Timeline Trips Mode',
+    feat2Title: 'Bill Groups (Timeline Trips)',
     feat2Desc: 'Bundle hotels, flights, and meals across multi-day vacations with 1-step settlement.',
     feat3Title: 'Analytics & Top Buddies',
     feat3Desc: 'Track monthly spending patterns and automatically rank your most frequent dining friends.',
@@ -301,7 +300,7 @@ const LANDING_COPY = {
       'Сфотографируйте чек, и ИИ распознает каждую позицию. Отметьте участников — налог и чаевые распределятся пропорционально.',
     scanCta: 'Сканировать первый чек',
     howCta: 'Как это работает',
-    freeTag: 'Бесплатно для групп до 8 человек · Без привязки карты',
+    freeTag: 'Быстро · Удобно · Без установки приложения',
     itemsDetected: 'ИИ распознал 5 позиций',
     whoPaysWhat: 'Кто сколько платит',
     taxTipIncluded: 'С учетом налога 7% и чаевых',
@@ -317,8 +316,8 @@ const LANDING_COPY = {
     stat2Label: 'Мгновенное распознавание',
     stat3Val: '4 Языка',
     stat3Label: 'RU · EN · VI · ZH',
-    stat4Val: '100% Free',
-    stat4Label: 'Без скрытых комиссий',
+    stat4Val: 'Синхронизация',
+    stat4Label: 'Мгновенное обновление данных',
     navHow: 'Как работает',
     navFeatures: 'Возможности',
     navAudience: 'Для кого',
@@ -339,7 +338,7 @@ const LANDING_COPY = {
     featSub: 'Все необходимые инструменты для прозрачных расчетов в любой компании.',
     feat1Title: 'Мультиязычный OCR',
     feat1Desc: 'Распознает чеки на русском, вьетнамском, английском и китайском языках.',
-    feat2Title: 'Многодневные поездки (Timeline)',
+    feat2Title: 'Группы счетов (Timeline Trips)',
     feat2Desc: 'Объединяйте счета отелей, билетов и ресторанов за всю поездку в один расчет.',
     feat3Title: 'Аналитика и частые друзья',
     feat3Desc: 'Ежемесячная структура расходов и рейтинг друзей, с кем чаще всего отдыхаете.',
@@ -430,7 +429,7 @@ const LANDING_COPY = {
       '拍照扫描账单小票，AI 自动识别每一道菜品。轻轻勾选就餐成员——税费与小费按比例公摊，告别手工计算。',
     scanCta: '扫描您的首张小票',
     howCta: '了解如何运作',
-    freeTag: '支持8人以下团队永久免费 · 无需绑定信用卡',
+    freeTag: '快捷 · 方便 · 无需下载应用',
     itemsDetected: 'AI 已精准识别 5 项菜品',
     whoPaysWhat: '各成员应付明细',
     taxTipIncluded: '已含 7% 税费及服务费',
@@ -446,8 +445,8 @@ const LANDING_COPY = {
     stat2Label: '极速秒级识别解析',
     stat3Val: '4 种语言',
     stat3Label: '中 · 越 · 英 · 俄全支持',
-    stat4Val: '100% 免费',
-    stat4Label: '无隐藏费用与广告',
+    stat4Val: '实时同步',
+    stat4Label: '数据即时更新',
     navHow: '工作原理',
     navFeatures: '核心功能',
     navAudience: '适用场景',
@@ -468,7 +467,7 @@ const LANDING_COPY = {
     featSub: '提供全方位的透明分账体验，让每一次聚会都轻松愉快。',
     feat1Title: '多语言 AI OCR 引擎',
     feat1Desc: '自动识别中文、越南语、英语及俄语餐饮小票。',
-    feat2Title: '多日旅行账单分程模式 (Timeline Trips)',
+    feat2Title: '账单分组 (Timeline Trips)',
     feat2Desc: '汇总多日行程中的机票、住宿及餐饮开销，自动对冲债务并一键清算。',
     feat3Title: '月度财务统计与聚会常客',
     feat3Desc: '智能分析个人消费类别分布，自动生成聚会最频繁的好友榜单。',
@@ -683,8 +682,12 @@ export function LandingPage() {
       >
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#1f543e] text-white shadow-[0_0_15px_rgba(31,84,62,0.5)]">
-              <Receipt className="h-5 w-5" />
+            <div className="relative flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-emerald-500/30 bg-surface shadow-sm">
+              <img
+                src="/logo.png"
+                alt="FairShare Logo"
+                className="h-full w-full object-cover scale-125"
+              />
             </div>
             <span className="text-lg font-bold tracking-tight">FairShare</span>
           </div>
@@ -1238,8 +1241,12 @@ export function LandingPage() {
             {/* Cột 1: Brand */}
             <div className="space-y-3 md:col-span-5">
               <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#1f543e] text-white">
-                  <Receipt className="h-4 w-4" />
+                <div className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-emerald-500/30 bg-surface shadow-sm">
+                  <img
+                    src="/logo.png"
+                    alt="FairShare Logo"
+                    className="h-full w-full object-cover scale-125"
+                  />
                 </div>
                 <span className="text-base font-bold text-white">FairShare</span>
               </div>
@@ -1386,8 +1393,12 @@ export function LandingPage() {
             </button>
 
             <div className="flex flex-col items-center text-center mb-6">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-emerald-400/30 bg-gradient-to-b from-[#25664b] to-[#173f2e] text-white shadow-[0_8px_20px_rgba(31,84,62,0.5)] mb-3">
-                <Receipt className="h-6 w-6 text-emerald-200" />
+              <div className="relative mb-3 flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-emerald-500/30 bg-surface shadow-sm">
+                <img
+                  src="/logo.png"
+                  alt="FairShare Logo"
+                  className="h-full w-full object-cover scale-125"
+                />
               </div>
               <h3 className="text-xl font-extrabold tracking-tight">
                 {mode === 'login'

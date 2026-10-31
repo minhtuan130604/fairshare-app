@@ -12,6 +12,13 @@ export function Footer({ onOpenFeedback }: FooterProps) {
     <footer className="mt-auto border-t border-line bg-surface/50 backdrop-blur py-6 px-4 sm:px-6">
       <div className="mx-auto max-w-7xl flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-ink-3">
         <div className="flex items-center gap-2">
+          <div className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-emerald-500/30 bg-surface shadow-sm">
+            <img
+              src="/logo.png"
+              alt="FairShare Logo"
+              className="h-full w-full object-cover scale-125"
+            />
+          </div>
           <span className="font-bold text-ink-1 tracking-tight">FairShare</span>
           <span>© 2026. All rights reserved.</span>
           <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[10px] text-accent font-mono">v1.0.0</span>

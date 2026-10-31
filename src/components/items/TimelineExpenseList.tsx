@@ -1,30 +1,35 @@
-
-
-import { Check, ChevronDown, ChevronRight, Clock3, Plus, ScanLine, Trash2, Users } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, Clock3, Plus, ScanLine, Trash2, Users, Tag } from 'lucide-react';
 import { useState, useRef, useEffect, type FormEvent } from 'react';
 import { useBillStore } from '../../store/useBillStore';
+import { useAuthStore } from '../../store/useAuthStore';
+import { isBillReadOnly } from '../../types/bill';
 import { useLocale, t } from '../../hooks/useLocale';
 import { formatCurrency } from '../../utils/formatters';
 import { Avatar } from '../ui/Avatar';
 import { ScanReceiptModal } from './ScanReceiptModal';
+import { CategorySelector } from '../bill/CategorySelector';
 import type { BillExpense, ExpenseItem } from '../../types/bill';
 
 interface DraftItem {
   name: string;
   price: string;
   quantity: string;
+  category: string;
 }
-const EMPTY_DRAFT: DraftItem = { name: '', price: '', quantity: '1' };
+const EMPTY_DRAFT: DraftItem = { name: '', price: '', quantity: '1', category: 'dining' };
 
 function ExpenseItemRow({ expense, item }: { expense: BillExpense; item: ExpenseItem }) {
   const { currentBill, updateExpenseItem, removeExpenseItem } = useBillStore();
+  const { user } = useAuthStore();
   const { locale } = useLocale();
   if (!currentBill) return null;
 
-  const members = Array.isArray(currentBill.members) ? currentBill.members : [];
+  const members = Array.isArray(currentBill.timelineMembers)
+    ? currentBill.timelineMembers
+    : (Array.isArray(currentBill.members) ? currentBill.members : []);
   const assigned = Array.isArray(item.assignedMemberIds) ? item.assignedMemberIds : [];
   const total = (Number(item.price) || 0) * (Number(item.quantity) || 0);
-  const isReadOnly = Boolean(currentBill.isSharedBill);
+  const isReadOnly = isBillReadOnly(currentBill, user?.id);
 
   const selectAll = () => {
     const targetIds = (expense.participantIds && expense.participantIds.length > 0)
@@ -37,17 +42,44 @@ function ExpenseItemRow({ expense, item }: { expense: BillExpense; item: Expense
     updateExpenseItem(expense.id, item.id, { assignedMemberIds: [] });
   };
 
+  const getCategoryLabel = (cat?: string) => {
+    if (!cat) return null;
+    const map: Record<string, { vi: string; ru: string; en: string; zh: string }> = {
+      dining: { vi: 'Ăn uống', ru: 'Еда', en: 'Dining', zh: '餐饮' },
+      shopping: { vi: 'Mua sắm', ru: 'Покупки', en: 'Shopping', zh: '购物' },
+      transport: { vi: 'Di chuyển', ru: 'Транспорт', en: 'Transport', zh: '交通' },
+      entertainment: { vi: 'Giải trí', ru: 'Отдых', en: 'Entertainment', zh: '娱乐' },
+      travel: { vi: 'Du lịch', ru: 'Поездки', en: 'Travel', zh: '旅游' },
+      other: { vi: 'Khác', ru: 'Другое', en: 'Other', zh: '其他' },
+    };
+    const found = map[cat];
+    if (found) {
+      return found[locale as 'vi' | 'ru' | 'en' | 'zh'] || found.en;
+    }
+    return cat;
+  };
+
+  const itemCat = (item as any).category;
+
   return (
     <div className="rounded-xl border border-line bg-surface-2/60 p-3">
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
-          <input
-            value={item.name}
-            onChange={(e) => updateExpenseItem(expense.id, item.id, { name: e.target.value })}
-            disabled={isReadOnly}
-            aria-label="Tên món"
-            className="field h-9 w-full px-2 text-sm font-medium"
-          />
+          <div className="flex items-center gap-2">
+            <input
+              value={item.name}
+              onChange={(e) => updateExpenseItem(expense.id, item.id, { name: e.target.value })}
+              disabled={isReadOnly}
+              aria-label="Tên món"
+              className="field h-9 w-full px-2 text-sm font-medium"
+            />
+            {itemCat && (
+              <span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-accent-soft text-accent text-[11px] font-medium border border-accent/20">
+                <Tag className="w-3 h-3" />
+                {getCategoryLabel(itemCat)}
+              </span>
+            )}
+          </div>
           <p className="mt-1 text-xs text-ink-3 num">
             {item.quantity} × {formatCurrency(item.price, currentBill.currency)} = {formatCurrency(total, currentBill.currency)}
           </p>
@@ -121,6 +153,7 @@ function ExpenseItemRow({ expense, item }: { expense: BillExpense; item: Expense
 
 function ExpenseCard({ expense, index }: { expense: BillExpense; index: number }) {
   const { currentBill, updateExpense, removeExpense, addItemToExpense, addMember, savedGroups, applyGroupToBill } = useBillStore();
+  const { user } = useAuthStore();
   const { locale } = useLocale();
   const [draft, setDraft] = useState<DraftItem>(EMPTY_DRAFT);
   const [isScanOpen, setIsScanOpen] = useState(false);
@@ -154,18 +187,21 @@ function ExpenseCard({ expense, index }: { expense: BillExpense; index: number }
   const tax = subtotal * ((Number(expense.taxPercent) || 0) / 100);
   const tip = subtotal * ((Number(expense.tipPercent) || 0) / 100);
   const totalExpense = subtotal + tax + tip;
-  const isReadOnly = Boolean(currentBill.isSharedBill);
+  const isReadOnly = isBillReadOnly(currentBill, user?.id);
 
   const submitItem = (event: FormEvent) => {
     event.preventDefault();
     const price = Number(draft.price);
     if (!draft.name.trim() || price <= 0 || isReadOnly) return;
+
     addItemToExpense(expense.id, {
       name: draft.name.trim(),
       price,
       quantity: Math.max(1, Math.floor(Number(draft.quantity)) || 1),
       assignedMemberIds: expense.participantIds || [],
-    });
+      category: draft.category || 'dining',
+    } as any);
+
     setDraft(EMPTY_DRAFT);
     setShowAddItem(false);
   };
@@ -420,34 +456,55 @@ function ExpenseCard({ expense, index }: { expense: BillExpense; index: number }
             {!isReadOnly && (
               <div className="pt-1">
                 {showAddItem ? (
-                  <form onSubmit={submitItem} className="rounded-xl border border-neutral-700/80 bg-neutral-900/90 p-3 space-y-2">
-                    <div className="grid gap-2 sm:grid-cols-[1fr_6rem_5rem]">
+                  <form onSubmit={submitItem} className="rounded-xl border border-neutral-700/80 bg-neutral-900/90 p-3 space-y-3">
+                    <div>
                       <input
                         value={draft.name}
                         onChange={(e) => setDraft({ ...draft, name: e.target.value })}
                         placeholder={t('itemNamePlaceholder', locale)}
-                        className="field h-9 px-2 text-sm"
+                        className="field h-9 px-2 text-sm w-full"
                         autoFocus
                       />
-                      <input
-                        type="number"
-                        min="0"
-                        step="any"
-                        value={draft.price}
-                        onChange={(e) => setDraft({ ...draft, price: e.target.value })}
-                        placeholder={t('pricePlaceholder', locale)}
-                        className="field h-9 px-2 text-sm num"
-                      />
-                      <input
-                        type="number"
-                        min="1"
-                        step="1"
-                        value={draft.quantity}
-                        onChange={(e) => setDraft({ ...draft, quantity: e.target.value })}
-                        placeholder="SL"
-                        className="field h-9 px-2 text-sm num"
+                    </div>
+
+                    {/* Bộ chọn danh mục cho từng món trong chặng */}
+                    <div className="space-y-1">
+                      <label className="block text-xs font-medium text-ink-3">
+                        {locale === 'vi' ? 'Danh mục' : locale === 'ru' ? 'Категория' : locale === 'zh' ? '类别' : 'Category'}
+                      </label>
+                      <CategorySelector
+                        value={draft.category}
+                        onChange={(cat) => setDraft((prev) => ({ ...prev, category: cat }))}
                       />
                     </div>
+
+                    <div className="grid gap-2 sm:grid-cols-[1fr_6rem]">
+                      <div>
+                        <label className="block text-xs text-ink-3 mb-1">{t('pricePlaceholder', locale) || 'Giá tiền'}</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={draft.price}
+                          onChange={(e) => setDraft({ ...draft, price: e.target.value })}
+                          placeholder="0"
+                          className="field h-9 px-2 text-sm num w-full"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-ink-3 mb-1">SL</label>
+                        <input
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={draft.quantity}
+                          onChange={(e) => setDraft({ ...draft, quantity: e.target.value })}
+                          placeholder="1"
+                          className="field h-9 px-2 text-sm num w-full"
+                        />
+                      </div>
+                    </div>
+
                     <div className="flex items-center justify-end gap-2 pt-1">
                       <button
                         type="button"
@@ -538,11 +595,12 @@ function ExpenseCard({ expense, index }: { expense: BillExpense; index: number }
 
 export function TimelineExpenseList() {
   const { currentBill, addExpense, clearAllExpenses } = useBillStore();
+  const { user } = useAuthStore();
   const { locale } = useLocale();
   if (!currentBill) return null;
 
   const expenses = Array.isArray(currentBill.expenses) ? currentBill.expenses : [];
-  const isReadOnly = Boolean(currentBill.isSharedBill);
+  const isReadOnly = isBillReadOnly(currentBill, user?.id);
 
   const handleAddFirstExpense = () => {
     addExpense({
@@ -572,6 +630,20 @@ export function TimelineExpenseList() {
             {t('clearAllExpenses', locale)}
           </button>
         )}
+      </div>
+
+      {/* HIỂN THỊ THANH CHỌN DANH MỤC TRỰC TIẾP CHO NHÓM HÓA ĐƠN */}
+      <div className="mb-5 rounded-xl border border-line/60 bg-surface-2/40 p-3">
+        <label className="block text-xs font-medium text-ink-3 mb-2">
+          {locale === 'vi'
+            ? 'Danh mục nhóm hóa đơn'
+            : locale === 'ru'
+            ? 'Категория группы счетов'
+            : locale === 'zh'
+            ? '账单组类别'
+            : 'Group Bill Category'}
+        </label>
+        <CategorySelector />
       </div>
 
       {expenses.length === 0 ? (

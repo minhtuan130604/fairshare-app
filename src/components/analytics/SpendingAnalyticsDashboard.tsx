@@ -339,14 +339,17 @@ export function SpendingAnalyticsDashboard() {
       catMap[rawCat].amount += myShare;
     });
 
-    const categories: CategoryMetric[] = Object.entries(catMap).map(([key, val]) => ({
-      key,
-      name: val.name,
-      icon: val.icon,
-      color: val.color,
-      amount: Math.round(val.amount),
-      percentage: totalMySpent > 0 ? (val.amount / totalMySpent) * 100 : 0,
-    })).sort((a, b) => b.amount - a.amount);
+    const categories: CategoryMetric[] = Object.entries(catMap)
+      .map(([key, val]) => ({
+        key,
+        name: val.name,
+        icon: val.icon,
+        color: val.color,
+        amount: Math.round(val.amount),
+        percentage: totalMySpent > 0 ? (val.amount / totalMySpent) * 100 : 0,
+      }))
+      .filter((cat) => cat.amount > 0) // <-- Lọc bỏ các danh mục 0 đ
+      .sort((a, b) => b.amount - a.amount);
 
     return { totalMySpent, totalGroupSpent, categories };
   }, [filteredBills, locale, myNamesList, myId]);

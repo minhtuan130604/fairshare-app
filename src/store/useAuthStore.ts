@@ -3,6 +3,8 @@ import { create } from 'zustand';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import type { Session, User } from '@supabase/supabase-js';
 import { useBillStore } from './useBillStore';
+import { useProfileStore } from './useProfileStore';
+import { useNotificationStore } from './useNotificationStore';
 
 interface AuthState {
   user: User | null;
@@ -755,11 +757,19 @@ updatePassword: async (newPassword) => {
    * Đăng xuất.
    */
   signOut: async () => {
+    // Xóa dữ liệu người dùng ngay cả khi auth provider trả lỗi hoặc đang chuyển tài khoản.
+    const clearUserStores = () => {
+      useProfileStore.getState().clearProfile();
+      useBillStore.getState().resetSessionState();
+      useNotificationStore.setState({ notifications: [], isLoading: false });
+    };
+
     // Đăng xuất Local Auth.
     if (!isSupabaseConfigured) {
       try {
         window.localStorage.removeItem(LOCAL_SESSION_KEY);
         window.localStorage.removeItem('fairshare-profile-storage');
+        clearUserStores();
 
         set({
           user: null,
@@ -802,6 +812,7 @@ updatePassword: async (newPassword) => {
       try {
         window.localStorage.removeItem(LOCAL_SESSION_KEY);
         window.localStorage.removeItem('fairshare-profile-storage');
+        clearUserStores();
       } catch {
         // Bỏ qua nếu localStorage bị hạn chế quyền truy cập
       }
@@ -864,6 +875,24 @@ if (isSupabaseConfigured && supabase) {
       error: null,
     });
 
+    // Đồng bộ toàn bộ dữ liệu theo đúng user id mới. Không dùng dữ liệu persisted của user trước.
+    if (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'INITIAL_SESSION') {
+      const signedInUserId = session?.user?.id;
+      if (signedInUserId) {
+        if (previousUser?.id !== signedInUserId) {
+          useProfileStore.getState().clearProfile();
+          useBillStore.getState().resetSessionState();
+          useNotificationStore.setState({ notifications: [], isLoading: false });
+        }
+        void Promise.all([
+          useProfileStore.getState().fetchProfile(),
+          useBillStore.getState().fetchUserBills(),
+          useBillStore.getState().fetchUserGroups(),
+          useNotificationStore.getState().fetchNotifications(),
+        ]);
+      }
+    }
+
     // 3. Hiển thị animation CHỈ KHI chuyển từ chưa đăng nhập sang đăng nhập (và không phải đang recovery).
     if (
       event === 'SIGNED_IN' &&
@@ -899,6 +928,10 @@ if (isSupabaseConfigured && supabase) {
         window.clearTimeout(authTransitionTimeout);
         authTransitionTimeout = undefined;
       }
+
+      useProfileStore.getState().clearProfile();
+      useBillStore.getState().resetSessionState();
+      useNotificationStore.setState({ notifications: [], isLoading: false });
 
       useAuthStore.setState({
         user: null,

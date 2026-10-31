@@ -1,5 +1,7 @@
 import { Trash2, AlertCircle, Check } from 'lucide-react';
 import { useBillStore } from '../../store/useBillStore';
+import { useAuthStore } from '../../store/useAuthStore';
+import { isBillReadOnly } from '../../types/bill';
 import { formatCurrency } from '../../utils/formatters';
 import { motion } from 'framer-motion';
 import { Avatar } from '../ui/Avatar';
@@ -26,7 +28,8 @@ export function ItemCard({ itemId }: ItemCardProps) {
   const isUnassigned = assignedMemberIds.length === 0;
   const pricePerPerson = isUnassigned ? 0 : totalPrice / assignedMemberIds.length;
 
-  const isReadOnly = Boolean(currentBill?.isSharedBill);
+  const { user } = useAuthStore();
+  const isReadOnly = isBillReadOnly(currentBill, user?.id);
 
   const deselectAllMembersFromItem = () => {
     updateItem(item.id, { assignedMemberIds: [] });

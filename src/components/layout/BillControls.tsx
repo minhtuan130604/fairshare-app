@@ -1,6 +1,8 @@
 import { RotateCcw, Coins } from 'lucide-react';
 import { useBillStore } from '../../store/useBillStore';
 import { useLocale, t } from '../../hooks/useLocale';
+import { useAuthStore } from '../../store/useAuthStore';
+import { isBillReadOnly } from '../../types/bill';
 
 type Currency = 'VND' | 'RUB';
 
@@ -13,10 +15,11 @@ export function BillControls() {
   const store = useBillStore() as any;
   const { currentBill, resetCurrentBill, setBillMode } = store;
   const { locale } = useLocale();
+  const { user } = useAuthStore();
 
   if (!currentBill) return null;
 
-  const isReadOnly = Boolean(currentBill.isSharedBill);
+  const isReadOnly = isBillReadOnly(currentBill, user?.id);
 
   const handleCurrencyChange = (newCurrency: Currency) => {
     if (isReadOnly || currentBill.currency === newCurrency) return;

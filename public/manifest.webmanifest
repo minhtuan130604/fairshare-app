@@ -1,0 +1,17 @@
+{
+  "name": "FairShare - Chia hóa đơn nhóm",
+  "short_name": "FairShare",
+  "description": "Chia hóa đơn nhóm nhanh chóng và công bằng",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f1715",
+  "theme_color": "#0f1715",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

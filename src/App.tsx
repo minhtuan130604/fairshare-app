@@ -13,6 +13,8 @@ import { useAuthStore } from './store/useAuthStore';
 import { LandingPage } from './components/auth/LandingPage';
 import { ResetPasswordPage } from './components/auth/ResetPasswordPage';
 import { Header } from './components/layout/Header';
+import { GlobalAnnouncementModal } from './components/layout/GlobalAnnouncementModal';
+
 import { Footer } from './components/layout/Footer';
 import { SupportWidget } from './components/support/SupportWidget';
 import { BillControls } from './components/layout/BillControls';
@@ -36,6 +38,8 @@ import { supabase } from './lib/supabase';
 
 import type { ActivePage } from './components/layout/Header';
 
+import { isBillReadOnly } from './types/bill';
+
 type Tab = 'members' | 'items' | 'summary';
 
 const WORKSPACE_COPY = {
@@ -45,7 +49,7 @@ const WORKSPACE_COPY = {
   zh: { workspace: '工作区', billTitlePlaceholder: '为账单命名...', editTitle: '编辑账单名称', newBill: '新建账单', items: '个项目', aiReady: 'AI 已就绪' },
 } as const;
 
-export function App() {
+function AppContent() {
   useRealtimeBills();
 
   const {
@@ -54,6 +58,7 @@ export function App() {
     isSyncing,
     fetchUserBills,
     importBillFromURL,
+    loadBillFromHistory,
     initializeNewBill,
     updateBillTitle,
   } = useBillStore();
@@ -85,7 +90,27 @@ export function App() {
 
     const client = supabase;
     const channel = client
-      .channel(`bill-live-sync-${currentBillId}`)
+      .channel(`bill-transfer-${currentBillId}`)
+      .on(
+        'broadcast',
+        { event: 'transfer_confirmation_updated' },
+        ({ payload }: { payload: any }) => {
+          if (payload?.billId !== currentBillId) return;
+          useBillStore.setState((state) => {
+            if (!state.currentBill || state.currentBill.id !== currentBillId) return state;
+            const nextBill = {
+              ...state.currentBill,
+              transfer_confirmations: payload.transfer_confirmations ?? state.currentBill.transfer_confirmations,
+              settled_transfers: payload.settled_transfers ?? state.currentBill.settled_transfers,
+            };
+            return {
+              currentBill: nextBill,
+              history: state.history.map((bill) => bill.id === currentBillId ? nextBill : bill),
+              sharedBills: state.sharedBills.map((bill) => bill.id === currentBillId ? { ...bill, ...nextBill } : bill),
+            };
+          });
+        }
+      )
       .on(
         'postgres_changes',
         {
@@ -102,15 +127,19 @@ export function App() {
             ? raw.settled_transfers
             : payload.new?.settled_transfers;
 
+
           if (newConfirmations || newSettled) {
             useBillStore.setState((state) => {
               if (!state.currentBill || state.currentBill.id !== currentBillId) return state;
+              const nextBill = {
+                ...state.currentBill,
+                transfer_confirmations: newConfirmations ?? state.currentBill.transfer_confirmations,
+                settled_transfers: newSettled ?? state.currentBill.settled_transfers,
+              };
               return {
-                currentBill: {
-                  ...state.currentBill,
-                  transfer_confirmations: newConfirmations || state.currentBill.transfer_confirmations,
-                  settled_transfers: newSettled || state.currentBill.settled_transfers,
-                },
+                currentBill: nextBill,
+                history: state.history.map((bill) => bill.id === currentBillId ? nextBill : bill),
+                sharedBills: state.sharedBills.map((bill) => bill.id === currentBillId ? { ...bill, ...nextBill } : bill),
               };
             });
           }
@@ -170,11 +199,21 @@ export function App() {
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
     const billData = searchParams.get('bill');
+    const shareId = searchParams.get('share');
 
     if (billData && importBillFromURL(billData)) {
       window.history.replaceState({}, '', window.location.pathname);
+      return;
     }
-  }, [importBillFromURL]);
+
+    // Link dạng ?bill=<id> hoặc ?share=<bill_shares.id> phải được tải từ cloud.
+    const cloudId = shareId || billData;
+    if (cloudId && userId) {
+      void Promise.resolve(loadBillFromHistory(cloudId)).then(() => {
+        window.history.replaceState({}, '', window.location.pathname);
+      });
+    }
+  }, [importBillFromURL, loadBillFromHistory, userId]);
 
   useEffect(() => {
   if (userId && !isAdminAccount && !currentBill) {
@@ -191,7 +230,25 @@ export function App() {
     return <ResetPasswordPage onComplete={finishPasswordReset} />;
   }
 
-  if (isTransitioning || (userId && isAdminAccount === null)) {
+  if (!user) {
+    if (isTransitioning) {
+      return (
+        <div className="min-h-screen bg-canvas text-ink flex flex-col items-center justify-center gap-5">
+          <div className="relative flex h-16 w-16 items-center justify-center">
+            <div className="absolute inset-0 rounded-full border-4 border-line border-t-accent animate-spin" />
+            <span className="text-xl font-bold">FS</span>
+          </div>
+          <div className="text-center space-y-2">
+            <h2 className="text-lg font-semibold animate-pulse">{t('welcomeTitle', locale)}</h2>
+            <p className="text-sm text-ink-2">{t('welcomePreparing', locale)}</p>
+          </div>
+        </div>
+      );
+    }
+    return <LandingPage />;
+  }
+
+  if (isTransitioning || isAdminAccount === null) {
     return (
       <div className="min-h-screen bg-canvas text-ink flex flex-col items-center justify-center gap-5">
         <div className="relative flex h-16 w-16 items-center justify-center">
@@ -208,23 +265,23 @@ export function App() {
     );
   }
 
-  if (!user) {
-  return <LandingPage />;
-}
-
   if (isAdminAccount) {
     return (
-      <div className="min-h-screen bg-canvas text-ink flex flex-col">
-        <AdminPage />
-      </div>
+      <>
+        <div className="min-h-screen bg-canvas text-ink flex flex-col">
+          <AdminPage />
+        </div>
+      </>
     );
   }
 
   if (!currentBill) {
     return (
-      <div className="min-h-screen bg-canvas text-ink flex items-center justify-center">
-        <p className="text-ink-2">{t('loading', locale)}</p>
-      </div>
+      <>
+        <div className="min-h-screen bg-canvas text-ink flex items-center justify-center">
+          <p className="text-ink-2">{t('loading', locale)}</p>
+        </div>
+      </>
     );
   }
 
@@ -234,7 +291,8 @@ export function App() {
   const handleNavigate = (page: ActivePage) => setActivePage(page);
 
   return (
-    <div className="min-h-screen bg-canvas text-ink flex flex-col relative">
+    <>
+      <div className="min-h-screen bg-canvas text-ink flex flex-col relative">
       <Header activePage={activePage} onNavigate={handleNavigate} />
 
       {/* Trạng thái lưu cloud */}
@@ -303,7 +361,7 @@ export function App() {
                   value={currentBill.title}
                   onChange={(event) => updateBillTitle(event.target.value)}
                   placeholder={t('billTitlePlaceholder', locale)}
-                  disabled={Boolean(currentBill.isSharedBill)}
+                  disabled={isBillReadOnly(currentBill, user?.id)}
                   aria-label={workspaceCopy.editTitle}
                   className="min-w-0 flex-1 bg-transparent text-3xl font-semibold tracking-tight text-ink outline-none placeholder:text-ink-3/60 sm:text-4xl"
                 />
@@ -312,7 +370,7 @@ export function App() {
                   className="h-4 w-4 shrink-0 text-ink-3 opacity-50 transition-opacity group-focus-within:opacity-0"
                 />
               </div>
-              {currentBill.isSharedBill && (
+              {Boolean(currentBill?.isSharedBill && currentBill?.user_id && user?.id && currentBill.user_id !== user.id) && (
                 <p className="mt-2 text-xs text-amber-500/90">{t('readOnlyBillNotice', locale)}</p>
               )}
             </section>
@@ -474,7 +532,17 @@ export function App() {
         isOpen={isRouletteOpen}
         onClose={() => setIsRouletteOpen(false)}
       />
-    </div>
+      </div>
+    </>
+  );
+}
+
+export function App() {
+  return (
+    <>
+      <AppContent />
+      <GlobalAnnouncementModal />
+    </>
   );
 }
 

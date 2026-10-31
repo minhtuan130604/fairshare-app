@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
 import type { BillSession, BillExpense, BillMode, Member, ExpenseItem, CurrencyCode, MemberGroup, BillCategory } from '../types/bill';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from './useAuthStore';
@@ -57,7 +57,7 @@ interface BillState {
   deleteSharedBill: (shareId: string) => Promise<void>;
   // History
   saveBillToHistory: () => Promise<void>;
-  loadBillFromHistory: (billId: string) => void;
+  loadBillFromHistory: (billId: string) => void | Promise<void>;
   deleteBillFromHistory: (billId: string) => Promise<void>;
   // Cloud Sync
   fetchUserBills: () => Promise<void>;
@@ -69,6 +69,7 @@ interface BillState {
   toggleTheme: () => void;
   // Reset
   resetCurrentBill: () => void;
+  resetSessionState: () => void;
   // URL Sharing
   exportBillToURL: () => string;
   importBillFromURL: (encodedData: string) => boolean;
@@ -129,12 +130,65 @@ const createEmptyBill = (): BillSession => ({
   splitMode: 'ITEMIZED',
   mode: 'SINGLE',
   expenses: [],
+  timelineMembers: [],
 });
 
 const withBillInHistory = (state: Pick<BillState, 'history'>, bill: BillSession): BillSession[] => {
   if (!Array.isArray(state.history)) return [];
   return state.history.map((savedBill) => (savedBill.id === bill.id ? bill : savedBill));
 };
+
+
+const BASE64_DATA_URL_RE = /^data:image\/[^;]+;base64,/i;
+
+type PersistableValue = unknown;
+
+function stripBase64Images<T extends PersistableValue>(value: T): T {
+  if (typeof value === 'string') {
+    return (BASE64_DATA_URL_RE.test(value) ? '' : value) as T;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => stripBase64Images(item)) as T;
+  }
+  if (value && typeof value === 'object') {
+    const result: Record<string, unknown> = {};
+    Object.entries(value as Record<string, unknown>).forEach(([key, item]) => {
+      result[key] = stripBase64Images(item);
+    });
+    return result as T;
+  }
+  return value;
+}
+
+function sanitizeBillForLocalStorage(bill: BillSession | null): BillSession | null {
+  return bill ? stripBase64Images(bill) : null;
+}
+
+const safeLocalStorage = createJSONStorage(() => {
+  const storage = window.localStorage;
+  return {
+    getItem: (name: string) => storage.getItem(name),
+    removeItem: (name: string) => storage.removeItem(name),
+    setItem: (name: string, value: string) => {
+      try {
+        storage.setItem(name, value);
+      } catch (error) {
+        const isQuotaError =
+          error instanceof DOMException &&
+          (error.name === 'QuotaExceededError' || error.code === 22);
+        if (isQuotaError) {
+          console.warn('LocalStorage đầy quota, tự động dọn bớt cache cũ.');
+          try {
+            storage.removeItem(name);
+            storage.setItem(name, value);
+          } catch {
+            // Bỏ qua ghi local để không làm crash ứng dụng; dữ liệu cloud vẫn được giữ.
+          }
+        }
+      }
+    },
+  };
+});
 
 // Biến timer phục vụ cơ chế Debounce đồng bộ Cloud
 // Đặt 2 biến này ngay phía trên export const useBillStore = create<BillState>()(
@@ -250,22 +304,30 @@ export const useBillStore = create<BillState>()(
               receiver_id: receiverId,
             }));
           if (newShares.length > 0) {
-            const { error: shareInsertError } = await supabase.from('bill_shares').insert(newShares);
+            const { data: insertedShares, error: shareInsertError } = await supabase
+              .from('bill_shares')
+              .insert(newShares)
+              .select('id, receiver_id');
             if (shareInsertError) throw shareInsertError;
 
             const senderName =
               useProfileStore.getState().profile?.display_name ||
               user.user_metadata?.display_name ||
               'Bạn bè';
-            const notifications = newShares.map((s) => ({
-              user_id: s.receiver_id,
+            const notifications = (insertedShares ?? []).map((share) => ({
+              user_id: share.receiver_id,
               type: 'bill_shared',
               description: `${senderName} đã chia sẻ hóa đơn "${billToStore.title || 'Hóa đơn'}" với bạn.`,
-              data: { billId: cloudBillId },
+              data: { billId: cloudBillId, shareId: share.id },
               is_read: false,
               created_at: new Date().toISOString(),
             }));
-            await supabase.from('notifications').insert(notifications);
+            if (notifications.length > 0) {
+              const { error: notificationError } = await supabase
+                .from('notifications')
+                .insert(notifications);
+              if (notificationError) throw notificationError;
+            }
           }
           set({ isSyncing: false, syncError: null });
           return true;
@@ -331,14 +393,18 @@ export const useBillStore = create<BillState>()(
           receiverConfirmed: false,
         };
 
-        // Đảo trạng thái (Nếu đang true thì thành false để HỦY XÁC NHẬN)
-        const updatedStatus = role === 'payer' ? !current.payerConfirmed : !current.receiverConfirmed;
-        const newConfirmation = {
-          ...current,
-          ...(role === 'payer'
-            ? { payerConfirmed: updatedStatus }
-            : { receiverConfirmed: updatedStatus }),
-        };
+        // Payer báo chuyển tiền lần đầu; bấm lại để hủy toàn bộ handshake.
+        // Khi payer hủy, receiver luôn bị đưa về trạng thái chưa xác nhận.
+        const newConfirmation =
+          role === 'payer'
+            ? {
+                payerConfirmed: !current.payerConfirmed,
+                receiverConfirmed: false,
+              }
+            : {
+                ...current,
+                receiverConfirmed: !current.receiverConfirmed,
+              };
 
         const updatedConfirmations = {
           ...(currentBill.transfer_confirmations ?? {}),
@@ -349,12 +415,17 @@ export const useBillStore = create<BillState>()(
           ? currentBill.settled_transfers
           : [];
 
-        // Nếu người nhận xác nhận -> thêm vào settled; nếu người nhận HỦY -> xóa khỏi settled
-        const settledTransfers = newConfirmation.receiverConfirmed
+        const isSettled = newConfirmation.payerConfirmed && newConfirmation.receiverConfirmed;
+
+        const settledTransfers = isSettled
           ? currentSettled.includes(transferKey)
             ? currentSettled
             : [...currentSettled, transferKey]
           : currentSettled.filter((k) => k !== transferKey);
+
+
+
+
 
         const updatedBill: BillSession = {
           ...currentBill,
@@ -370,7 +441,7 @@ export const useBillStore = create<BillState>()(
 
         try {
           // Lưu ngay lên Supabase
-          await supabase
+          const { error: billUpdateError } = await supabase
             .from('bills')
             .update({
               transfer_confirmations: updatedConfirmations,
@@ -379,6 +450,19 @@ export const useBillStore = create<BillState>()(
               updated_at: new Date().toISOString(),
             })
             .eq('id', currentBill.id);
+          if (billUpdateError) throw billUpdateError;
+
+          const transferChannel = supabase.channel(`bill-transfer-${currentBill.id}`);
+          await transferChannel.send({
+            type: 'broadcast',
+            event: 'transfer_confirmation_updated',
+            payload: {
+              billId: currentBill.id,
+              transfer_confirmations: updatedConfirmations,
+              settled_transfers: settledTransfers,
+            },
+          });
+          void supabase.removeChannel(transferChannel);
 
           // Bắn thông báo nếu người chuyển báo đã gửi tiền
           if (role === 'payer' && newConfirmation.payerConfirmed) {
@@ -388,14 +472,17 @@ export const useBillStore = create<BillState>()(
             const receiverMemberId = currentBill.paidByMemberId;
 
             if (receiverMemberId && receiverMemberId !== currentUser?.id) {
-              await supabase.from('notifications').insert({
-                user_id: receiverMemberId,
-                type: 'transfer_reported',
-                description: `${senderName} đã báo chuyển tiền cho hóa đơn "${currentBill.title || 'Hóa đơn'}".`,
-                data: { billId: currentBill.id, transferKey },
-                is_read: false,
-                created_at: new Date().toISOString(),
-              });
+              const { error: notificationError } = await supabase
+                .from('notifications')
+                .insert({
+                  user_id: receiverMemberId,
+                  type: 'transfer_reported',
+                  description: `${senderName} đã báo chuyển tiền cho hóa đơn "${currentBill.title || 'Hóa đơn'}".`,
+                  data: { billId: currentBill.id, transferKey },
+                  is_read: false,
+                  created_at: new Date().toISOString(),
+                });
+              if (notificationError) throw notificationError;
             }
           }
         } catch (err) {
@@ -454,90 +541,208 @@ export const useBillStore = create<BillState>()(
 
 
       syncProfileToMember: () => {
-        const { currentBill, savedGroups } = get();
+        const { currentBill, history, savedGroups } = get();
         const profile = useProfileStore.getState().profile;
         const user = useAuthStore.getState().user;
         if (!profile && !user) return;
+
         const myId = user?.id || profile?.id || USER_SELF_ID;
-        const pName = (profile?.display_name || user?.user_metadata?.display_name || '').trim().toLowerCase();
+        const myEmail = (user?.email || '').trim().toLowerCase();
+        const newDisplayName = (profile?.display_name || user?.user_metadata?.display_name || '').trim();
+        const pName = newDisplayName.toLowerCase();
         const latestAvatar =
           profile?.avatar_url ||
           user?.user_metadata?.avatar_url ||
           user?.user_metadata?.picture ||
           '';
-        const isMeMember = (m: { id?: string; name?: string }) => {
+
+        // Kiểm tra thực tế xem người dùng còn bật VietQR hay SBP không
+        const hasVietQr = Boolean(profile?.account_number && profile.account_number.trim());
+        const hasSbp = Boolean(
+          (profile?.phone_number && profile.phone_number.trim()) ||
+          (profile?.russia_qr_url && profile.russia_qr_url.trim())
+        );
+
+        // Hàm nhận diện thành viên là CHÍNH TÔI (kể cả khi đang mang tên cũ trong bill)
+        const isMeMember = (m: any, index: number, billOwnerId?: string) => {
+          if (!m) return false;
           const n = (m.name || '').trim().toLowerCase();
+          const mEmail = (m.email || '').trim().toLowerCase();
           return (
             m.id === myId ||
+            m.userId === myId ||
             m.id === USER_SELF_ID ||
+            (myEmail && mEmail === myEmail) ||
             (pName && n === pName) ||
-            n === 'tôi'
+            n === 'tôi' ||
+            (latestAvatar && m.avatar_url === latestAvatar) ||
+            // Nếu mình là chủ bill và đây là thành viên có gắn avatar/thông tin ngân hàng của mình
+            ((!billOwnerId || billOwnerId === myId) && index === 0 && Boolean(m.avatar_url || m.phone_number || m.account_number))
           );
         };
 
-        let groupsUpdated = false;
-        const updatedGroups = savedGroups.map((g) => ({
+        const updateMemberData = (m: Member): Member => ({
+          ...m,
+          id: myId,
+          name: newDisplayName || m.name,
+          avatar_url: latestAvatar || m.avatar_url,
+          bank_name: hasVietQr ? (profile?.bank_name || '') : '',
+          account_number: hasVietQr ? (profile?.account_number || '') : '',
+          account_holder: hasVietQr ? (profile?.account_holder || '') : '',
+          phone_number: hasSbp ? (profile?.phone_number || '') : '',
+          russia_bank: hasSbp ? (profile?.russia_bank || 'sber') : '',
+          russia_account_holder: hasSbp ? (profile?.russia_account_holder || '') : '',
+          russia_qr_url: hasSbp ? (profile?.russia_qr_url || '') : '',
+          custom_qr_url: profile?.custom_qr_url || '',
+        });
+
+        // 1. Cập nhật các nhóm đã lưu
+        const updatedGroups = savedGroups.map((g: any) => ({
           ...g,
-          members: g.members.map((gm) => {
-            if (!isMeMember(gm)) return gm;
-            if (gm.avatar_url !== latestAvatar || (profile?.display_name && gm.name !== profile.display_name)) {
-              groupsUpdated = true;
-              return {
-                ...gm,
-                name: profile?.display_name || gm.name,
-                avatar_url: latestAvatar || gm.avatar_url,
-              };
-            }
-            return gm;
-          }),
+          members: Array.isArray(g.members)
+            ? g.members.map((gm: any, idx: number) => (isMeMember(gm, idx, myId) ? updateMemberData(gm) : gm))
+            : [],
         }));
-        if (groupsUpdated) {
-          set({ savedGroups: updatedGroups });
-          void get().syncGroupsToCloud(updatedGroups);
+
+        // 2. Hàm cập nhật một Bill bất kỳ (đổi cả ID trong items, expenses và payerId)
+        const syncSingleBill = (bill: BillSession): BillSession => {
+          if (!bill || bill.isSharedBill || !Array.isArray(bill.members)) return bill;
+          let oldMyMemberId: string | null = null;
+          let matchedOnce = false;
+
+          const newMembers = bill.members.map((m, idx) => {
+            if (!matchedOnce && isMeMember(m, idx, (bill as any).user_id)) {
+              matchedOnce = true;
+              oldMyMemberId = m.id;
+              return updateMemberData(m);
+            }
+            return m;
+          });
+
+          if (!matchedOnce) return bill;
+
+          const replaceId = (id: string) => (oldMyMemberId && id === oldMyMemberId ? myId : id);
+
+          const newItems = Array.isArray(bill.items)
+            ? bill.items.map((it) => ({
+                ...it,
+                assignedMemberIds: Array.isArray(it.assignedMemberIds)
+                  ? Array.from(new Set(it.assignedMemberIds.map(replaceId)))
+                  : [],
+              }))
+            : [];
+
+          const newExpenses = Array.isArray(bill.expenses)
+            ? bill.expenses.map((exp) => ({
+                ...exp,
+                payerId: replaceId(exp.payerId),
+                participantIds: Array.isArray(exp.participantIds)
+                  ? Array.from(new Set(exp.participantIds.map(replaceId)))
+                  : [],
+                items: Array.isArray(exp.items)
+                  ? exp.items.map((it) => ({
+                      ...it,
+                      assignedMemberIds: Array.isArray(it.assignedMemberIds)
+                        ? Array.from(new Set(it.assignedMemberIds.map(replaceId)))
+                        : [],
+                    }))
+                  : [],
+              }))
+            : [];
+
+          return {
+            ...bill,
+            members: newMembers,
+            paidByMemberId: replaceId(bill.paidByMemberId),
+            items: newItems,
+            expenses: newExpenses,
+          };
+        };
+
+        const updatedCurrentBill = currentBill ? syncSingleBill(currentBill) : null;
+        const updatedHistory = Array.isArray(history) ? history.map(syncSingleBill) : [];
+
+        set({
+          savedGroups: updatedGroups,
+          currentBill: updatedCurrentBill,
+          history: updatedHistory,
+        });
+
+        if (updatedCurrentBill) {
+          void get().saveBillToCloud(updatedCurrentBill);
+        }
+      },
+
+      setBillMode: (mode: BillMode) => {
+        const { currentBill } = get();
+        if (!currentBill) return;
+
+        // Nếu chuyển sang TIMELINE và chưa có chặng nào, tạo chặng khởi đầu với đúng người trả trước hiện tại
+        if (mode === 'TIMELINE' && (!Array.isArray(currentBill.expenses) || currentBill.expenses.length === 0)) {
+          const members = Array.isArray(currentBill.timelineMembers) && currentBill.timelineMembers.length > 0
+            ? currentBill.timelineMembers
+            : (Array.isArray(currentBill.members) ? currentBill.members : []);
+          const initialPayerId = currentBill.paidByMemberId || members[0]?.id || '';
+
+          const firstExpense: BillExpense = {
+            id: crypto.randomUUID(),
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
+            title: currentBill.title || 'Chặng 1',
+            payerId: initialPayerId,
+            participantIds: members.map((member) => member.id),
+            items: Array.isArray(currentBill.items) ? currentBill.items : [],
+            taxPercent: currentBill.taxPercent,
+            tipPercent: currentBill.tipPercent,
+          };
+          const updatedBill = {
+            ...currentBill,
+            mode,
+            timelineMembers: members,
+            expenses: [firstExpense],
+          };
+          set((state) => ({ currentBill: updatedBill, history: withBillInHistory(state, updatedBill) }));
+          void get().saveBillToCloud(updatedBill);
+          return;
         }
 
-        if (!currentBill || currentBill.isSharedBill || !Array.isArray(currentBill.members)) return;
-        let matchedMeOnce = false;
-        const updatedMembers: Member[] = [];
-        const seenIds = new Set<string>();
-        for (const m of currentBill.members) {
-          if (!m) continue;
-          if (isMeMember(m)) {
-            if (matchedMeOnce) continue;
-            matchedMeOnce = true;
-            seenIds.add(myId);
-            updatedMembers.push({
-              ...m,
-              id: myId,
-              name: profile?.display_name || m.name,
-              avatar_url: latestAvatar || m.avatar_url,
-              bank_name: profile?.bank_name || '',
-              account_number: profile?.account_number || '',
-              account_holder: profile?.account_holder || '',
-              phone_number: profile?.phone_number || '',
-              russia_bank: profile?.russia_bank || 'sber',
-              custom_qr_url: profile?.custom_qr_url || '',
-              russia_account_holder: profile?.russia_account_holder || '',
-              russia_qr_url: profile?.russia_qr_url || '',
-            });
-          } else {
-            const safeId = seenIds.has(m.id) ? generateId() : m.id;
-            seenIds.add(safeId);
-            updatedMembers.push({ ...m, id: safeId });
-          }
-        }
-        const updatedBill: BillSession = {
-          ...currentBill,
-          members: updatedMembers,
-          paidByMemberId:
-            currentBill.paidByMemberId === USER_SELF_ID || !seenIds.has(currentBill.paidByMemberId)
-              ? updatedMembers[0]?.id || myId
-              : currentBill.paidByMemberId,
+        const updatedBill = { ...currentBill, mode };
+        set((state) => ({ currentBill: updatedBill, history: withBillInHistory(state, updatedBill) }));
+        void get().saveBillToCloud(updatedBill);
+      },
+
+      addExpense: (expense?: Partial<BillExpense>) => {
+        const { currentBill } = get();
+        if (!currentBill) return;
+        const members = Array.isArray(currentBill.members) ? currentBill.members : [];
+        const currentExpenses = Array.isArray(currentBill.expenses) ? currentBill.expenses : [];
+        
+        // Ưu tiên chọn người trả tiền theo chặng trước đó hoặc người trả tiền mặc định của bill
+        const defaultPayer =
+          expense?.payerId ||
+          currentExpenses[currentExpenses.length - 1]?.payerId ||
+          currentBill.paidByMemberId ||
+          members[0]?.id ||
+          '';
+
+        const newExpense: BillExpense = {
+          id: crypto.randomUUID(),
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
+          title: `Chặng ${currentExpenses.length + 1}`,
+          payerId: defaultPayer,
+          participantIds: members.map((member) => member.id),
+          items: [],
+          taxPercent: 0,
+          tipPercent: 0,
+          ...expense,
         };
-        set((state) => ({
-          currentBill: updatedBill,
-          history: withBillInHistory(state, updatedBill),
-        }));
+
+        const updatedBill = {
+          ...currentBill,
+          mode: 'TIMELINE' as const,
+          expenses: [...currentExpenses, newExpense],
+        };
+        set((state) => ({ currentBill: updatedBill, history: withBillInHistory(state, updatedBill) }));
+        void get().saveBillToCloud(updatedBill);
       },
 
       ensureCurrentUserMember: () => {
@@ -664,56 +869,9 @@ export const useBillStore = create<BillState>()(
         void get().saveBillToCloud(updatedBill);
       },
 
-      setBillMode: (mode: BillMode) => {
-        const { currentBill } = get();
-        if (!currentBill) return;
-        if (mode === 'TIMELINE' && (!Array.isArray(currentBill.expenses) || currentBill.expenses.length === 0)) {
-          const members = Array.isArray(currentBill.members) ? currentBill.members : [];
-          const firstExpense: BillExpense = {
-            id: crypto.randomUUID(),
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
-            title: currentBill.title || 'Chặng 1',
-            payerId: currentBill.paidByMemberId || members[0]?.id || '',
-            participantIds: members.map((member) => member.id),
-            items: Array.isArray(currentBill.items) ? currentBill.items : [],
-            taxPercent: currentBill.taxPercent,
-            tipPercent: currentBill.tipPercent,
-          };
-          const updatedBill = { ...currentBill, mode, expenses: [firstExpense] };
-          set((state) => ({ currentBill: updatedBill, history: withBillInHistory(state, updatedBill) }));
-          void get().saveBillToCloud(updatedBill);
-          return;
-        }
-        const updatedBill = { ...currentBill, mode };
-        set((state) => ({ currentBill: updatedBill, history: withBillInHistory(state, updatedBill) }));
-        void get().saveBillToCloud(updatedBill);
-      },
+      
 
-      addExpense: (expense?: Partial<BillExpense>) => {
-        const { currentBill } = get();
-        if (!currentBill) return;
-        const members = Array.isArray(currentBill.members) ? currentBill.members : [];
-        const currentExpenses = Array.isArray(currentBill.expenses) ? currentBill.expenses : [];
-        const newExpense: BillExpense = {
-          id: crypto.randomUUID(),
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
-          title: `Chặng ${currentExpenses.length + 1}`,
-          payerId: members[0]?.id || '',
-          participantIds: members.map((member) => member.id),
-          items: [],
-          taxPercent: 0,
-          tipPercent: 0,
-          ...expense,
-        };
-        const updatedBill = {
-          ...currentBill,
-          mode: 'TIMELINE' as const,
-          expenses: [...currentExpenses, newExpense],
-        };
-        set((state) => ({ currentBill: updatedBill, history: withBillInHistory(state, updatedBill) }));
-        void get().saveBillToCloud(updatedBill);
-      },
-
+      
       updateExpense: (expenseId: string, updates: Partial<BillExpense>) => {
         const { currentBill } = get();
         if (!currentBill) return;
@@ -1109,20 +1267,51 @@ export const useBillStore = create<BillState>()(
         }
       },
 
-      loadBillFromHistory: (billId: string) => {
+      loadBillFromHistory: async (billId: string) => {
         const { history, sharedBills } = get();
-        const bill = history.find((b) => b.id === billId) || sharedBills.find((b) => b.id === billId);
+        const bill = history.find((b) => b.id === billId)
+          || sharedBills.find((b) => b.id === billId || b.shareId === billId);
         if (bill) {
+          const userId = useAuthStore.getState().user?.id;
+          const ownerId = bill.user_id || (history.some((item) => item.id === bill.id) ? userId : undefined);
+          const isOwnedBill = Boolean(userId && ownerId === userId);
           set({
             currentBill: {
               ...bill,
+              user_id: ownerId,
+              isSharedBill: isOwnedBill ? false : Boolean(bill.isSharedBill && ownerId && userId && ownerId !== userId),
               mode: bill.mode || (bill.expenses && bill.expenses.length > 0 ? 'TIMELINE' : 'SINGLE'),
               expenses: Array.isArray(bill.expenses) ? bill.expenses : [],
               items: Array.isArray(bill.items) ? bill.items : [],
               members: Array.isArray(bill.members) ? bill.members : [],
             },
           });
+          return;
         }
+
+        const user = useAuthStore.getState().user;
+        if (!user || !supabase) return;
+        let { data, error } = await supabase.from('bills').select('*').eq('id', billId).maybeSingle();
+        let shareId: string | undefined;
+        if (!data && !error) {
+          const shareResult = await supabase.from('bill_shares').select('id, bill_id, sender_id, bill:bills (*)').eq('id', billId).eq('receiver_id', user.id).maybeSingle();
+          error = shareResult.error;
+          data = shareResult.data?.bill as any;
+          shareId = shareResult.data?.id;
+        }
+        if (error || !data) return;
+        const raw = (data as any).data || data;
+        const loadedBill: BillSession = {
+          ...(raw as BillSession),
+          id: data.id,
+          user_id: data.user_id,
+          isSharedBill: data.user_id !== user.id,
+          shareId: data.user_id !== user.id ? (shareId || billId) : undefined,
+        };
+        set((state) => ({
+          currentBill: loadedBill,
+          history: loadedBill.isSharedBill ? state.history : withBillInHistory(state, loadedBill),
+        }));
       },
 
       deleteBillFromHistory: async (billId: string) => {
@@ -1149,7 +1338,11 @@ export const useBillStore = create<BillState>()(
         const normalizeBillRow = (row: any): BillSession => {
           const raw = row?.data || row?.bill_data || row || {};
           return {
+            timelineMembers: Array.isArray(raw?.timelineMembers)
+              ? raw.timelineMembers
+              : (Array.isArray(raw?.members) ? raw.members : []),
             id: row?.id || raw?.id || generateId(),
+            user_id: row?.user_id || raw?.user_id,
             title: raw?.title || row?.title || 'Hóa đơn',
             date: raw?.date || row?.created_at || new Date().toISOString(),
             currency: raw?.currency || 'VND',
@@ -1195,16 +1388,17 @@ export const useBillStore = create<BillState>()(
             .eq('receiver_id', user.id);
 
           const myBills = (myBillsData || [])
-            .map((b) => normalizeBillRow(b))
+            .map((b) => ({ ...normalizeBillRow(b), user_id: user.id, isSharedBill: false }))
             .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
 
           const sharedBillsList = (sharedData || [])
             .filter((item: any) => Boolean(item.bill))
             .map((item: any) => ({
               ...normalizeBillRow(item.bill),
+              user_id: item.bill.user_id,
               shareId: item.id,
               sharedBy: item.sender?.display_name || 'Bạn bè',
-              isSharedBill: true,
+              isSharedBill: item.bill.user_id !== user.id,
             }));
 
           // Kiểm tra lại một lần nữa trước khi set state: nếu người dùng vừa bấm trong lúc đang tải mạng thì giữ nguyên currentBill của người dùng
@@ -1379,6 +1573,27 @@ export const useBillStore = create<BillState>()(
         });
       },
 
+      resetSessionState: () => {
+        if (cloudSyncTimeout) {
+          clearTimeout(cloudSyncTimeout);
+          cloudSyncTimeout = null;
+        }
+        lastLocalMutationTime = 0;
+        set({
+          currentBill: null,
+          history: [],
+          savedGroups: [],
+          sharedBills: [],
+          isSyncing: false,
+          syncError: null,
+        });
+        try {
+          window.localStorage.removeItem('fairshare-storage');
+        } catch {
+          // localStorage có thể bị chặn trong private browsing.
+        }
+      },
+
       exportBillToURL: () => {
         const { currentBill } = get();
         if (!currentBill) return '';
@@ -1416,10 +1631,12 @@ export const useBillStore = create<BillState>()(
     }),
     {
       name: 'fairshare-storage',
+      storage: safeLocalStorage,
       partialize: (state) => ({
-        currentBill: state.currentBill,
-        history: state.history,
-        savedGroups: state.savedGroups,
+        currentBill: sanitizeBillForLocalStorage(state.currentBill),
+        currency: state.currentBill?.currency ?? 'VND',
+        history: state.history.slice(0, 5).map((bill) => sanitizeBillForLocalStorage(bill)),
+        savedGroups: stripBase64Images(state.savedGroups),
         theme: state.theme,
       }),
       onRehydrateStorage: () => (state) => {

@@ -12,6 +12,7 @@ import {
   Search,
   X,
   ArrowUpDown,
+  ChevronRight,
 } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { useBillStore } from '../store/useBillStore';
@@ -166,7 +167,7 @@ export function HistoryPage({ onBack, onOpenBill }: HistoryPageProps) {
   const syncing = Boolean(isSyncing || isManualSyncing);
 
   return (
-    <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 pb-32 lg:pb-12">
       <button
         type="button"
         onClick={onBack}
@@ -284,7 +285,7 @@ export function HistoryPage({ onBack, onOpenBill }: HistoryPageProps) {
             type="button"
             onClick={() => setTypeFilter(value)}
             aria-pressed={typeFilter === value}
-            className={`rounded-full border px-3 py-1.5 text-sm font-semibold transition cursor-pointer ${
+            className={`rounded-full border px-3 py-1 text-xs sm:text-sm font-semibold transition cursor-pointer ${
               typeFilter === value
                 ? 'border-accent bg-accent-soft text-accent'
                 : 'border-line text-ink-2 hover:border-accent/50 hover:text-ink'
@@ -302,16 +303,16 @@ export function HistoryPage({ onBack, onOpenBill }: HistoryPageProps) {
           <p className="mt-3 text-sm text-ink-2">{emptyMessage}</p>
         </div>
       ) : (
-        <div className="mt-6 space-y-8">
+        <div className="mt-6 space-y-6">
           {Object.entries(groups).map(([date, dateBills]) => (
             <section key={date}>
-              <h2 className="mb-4 flex items-center gap-3 text-sm font-semibold text-ink-2">
+              <h2 className="mb-3 flex items-center gap-3 text-xs sm:text-sm font-semibold text-ink-2">
                 <span className="h-px flex-1 bg-line" />
                 <span className="whitespace-nowrap">📅 {date}</span>
                 <span className="h-px flex-1 bg-line" />
               </h2>
 
-              <div className="space-y-3">
+              <div className="space-y-2.5">
                 {dateBills.map((bill) => {
                   const activeSource = currentBill && currentBill.id === bill.id ? currentBill : bill;
 
@@ -330,41 +331,43 @@ export function HistoryPage({ onBack, onOpenBill }: HistoryPageProps) {
                   return (
                     <article
                       key={bill.shareId || bill.id}
-                      className="flex flex-col gap-4 rounded-2xl border border-line bg-card p-4 sm:flex-row sm:items-center hover:border-line/80 transition"
+                      onClick={() => open(bill.id)}
+                      className="group relative flex items-center justify-between gap-3 rounded-2xl border border-line bg-card p-3 sm:p-4 hover:border-accent/40 hover:bg-card/80 transition-all cursor-pointer active:scale-[0.99]"
                     >
+                      {/* Khối bên trái: Icon, Tiêu đề, Badge, Thông tin phụ */}
                       <div className="flex min-w-0 flex-1 items-center gap-3">
-                        <FileText className="h-5 w-5 shrink-0 text-accent" />
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
+                          <FileText className="h-4 w-4" />
+                        </div>
+
                         <div className="min-w-0 flex-1">
-                          <div className="flex min-w-0 flex-wrap items-center gap-2">
-                            <h2 className="truncate font-bold text-ink">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <h3 className="truncate font-bold text-xs sm:text-sm text-ink group-hover:text-accent transition-colors">
                               {bill.title || t('unnamedBill', locale)}
-                            </h2>
+                            </h3>
 
                             {isTimelineBill(bill) && (
-                              <span className="shrink-0 rounded-full bg-emerald-400/15 px-2 py-0.5 text-xs font-semibold text-emerald-400">
-                                {t('filterTimeline', locale)}: {bill.expenses?.length ?? 0} chặng
+                              <span className="shrink-0 rounded-md bg-emerald-400/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-400">
+                                {t('filterTimeline', locale)}
                               </span>
                             )}
 
-                            {/* Badge trạng thái chuyển khoản */}
                             {settlements.length > 0 && (
-                              <>
-                                {remainingUnpaid === 0 ? (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[11px] font-semibold text-emerald-400">
-                                    <CheckCircle2 className="h-3 w-3" />
-                                    {t('allPaid', locale)}
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-[11px] font-semibold text-amber-400">
-                                    <Clock className="h-3 w-3" />
-                                    {t('unpaidCount', locale, { count: remainingUnpaid })}
-                                  </span>
-                                )}
-                              </>
+                              remainingUnpaid === 0 ? (
+                                <span className="inline-flex items-center gap-0.5 rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-400">
+                                  <CheckCircle2 className="h-2.5 w-2.5" />
+                                  <span>{t('allPaid', locale)}</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-0.5 rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-400">
+                                  <Clock className="h-2.5 w-2.5" />
+                                  <span>{t('unpaidCount', locale, { count: remainingUnpaid })}</span>
+                                </span>
+                              )
                             )}
                           </div>
 
-                          <p className="mt-1 text-xs text-ink-2">
+                          <p className="mt-0.5 text-[11px] text-ink-3 truncate">
                             {new Date(bill.date).toLocaleTimeString(locale, {
                               hour: '2-digit',
                               minute: '2-digit',
@@ -372,8 +375,7 @@ export function HistoryPage({ onBack, onOpenBill }: HistoryPageProps) {
                             · {bill.members.length} {t('membersNav', locale)}
                             {historyTab === 'shared' && (
                               <>
-                                {' '}
-                                · <UserRound className="inline h-3.5 w-3.5" />{' '}
+                                {' '}· <UserRound className="inline h-3 w-3" />{' '}
                                 {bill.sharedBy || 'Friend'}
                               </>
                             )}
@@ -381,30 +383,28 @@ export function HistoryPage({ onBack, onOpenBill }: HistoryPageProps) {
                         </div>
                       </div>
 
-                      <p className="text-lg font-bold text-emerald-400 sm:min-w-40 sm:text-right num">
-                        {money(calculateBillTotal(bill), bill.currency)}
-                      </p>
+                      {/* Khối bên phải: Tổng tiền, Nút xóa & Mũi tên */}
+                      <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+                        <span className="num font-mono font-bold text-xs sm:text-sm text-accent">
+                          {money(calculateBillTotal(bill), bill.currency)}
+                        </span>
 
-                      <div className="flex shrink-0 gap-2">
                         <button
                           type="button"
-                          onClick={() => open(bill.id)}
-                          className="btn btn-secondary flex-1 sm:flex-none cursor-pointer"
-                        >
-                          {t('openButton', locale)}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
+                          onClick={(e) => {
+                            e.stopPropagation();
                             void (historyTab === 'my'
                               ? deleteBillFromHistory(bill.id)
-                              : deleteSharedBill(bill.shareId || bill.id))
-                          }
-                          className="icon-btn text-rose-500 hover:bg-rose-500/10 cursor-pointer"
+                              : deleteSharedBill(bill.shareId || bill.id));
+                          }}
+                          className="icon-btn p-1.5 text-ink-3 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition cursor-pointer"
                           aria-label={t('deleteBill', locale)}
+                          title={t('deleteBill', locale)}
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 className="h-3.5 w-3.5" />
                         </button>
+
+                        <ChevronRight className="h-4 w-4 text-ink-3 group-hover:text-accent group-hover:translate-x-0.5 transition-all" />
                       </div>
                     </article>
                   );

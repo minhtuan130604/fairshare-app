@@ -1,3 +1,4 @@
+
 import { useEffect, useState, type FormEvent } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import {
@@ -19,9 +20,12 @@ import {
   Activity,
   Receipt,
   Share2,
+  Megaphone,
+  BadgeCheck,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/useAuthStore';
+import { useLocale, t } from '../hooks/useLocale';
 
 type AdminTab = 'users' | 'analytics' | 'inbox';
 type MessageTypeFilter = 'all' | 'support' | 'bug' | 'feedback';
@@ -31,6 +35,8 @@ interface AdminStats {
   totalUsers: number;
   totalBills: number;
   totalShares: number;
+  totalAmountVnd: number;
+  totalAmountRub: number;
   pendingMessages: number;
 }
 
@@ -42,6 +48,9 @@ interface AdminUserRow {
   created_at: string;
   last_sign_in_at: string | null;
   bill_count: number;
+  bills_count: number;
+  shared_count: number;
+  has_qr: boolean;
 }
 
 interface SupportMessage {
@@ -60,21 +69,24 @@ interface SupportMessage {
 
 export function AdminPage() {
   const { user, signOut } = useAuthStore();
+  const { locale } = useLocale();
 
   const [activeTab, setActiveTab] = useState<AdminTab>('users');
   const [loading, setLoading] = useState(true);
 
-  // Dữ liệu
+  // Dữ liệu tổng quan
   const [stats, setStats] = useState<AdminStats>({
     totalUsers: 0,
     totalBills: 0,
     totalShares: 0,
+    totalAmountVnd: 0,
+    totalAmountRub: 0,
     pendingMessages: 0,
   });
   const [usersList, setUsersList] = useState<AdminUserRow[]>([]);
   const [messages, setMessages] = useState<SupportMessage[]>([]);
 
-  // State Trang 1: Quản lý Users
+  // Tab 1: Quản lý Users
   const [userSearch, setUserSearch] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -82,26 +94,90 @@ export function AdminPage() {
   const [creatingUser, setCreatingUser] = useState(false);
   const [userActionMsg, setUserActionMsg] = useState('');
 
-  // State Trang 3: Hộp thư hỗ trợ
+  // Tab 3: Hộp thư hỗ trợ
   const [statusFilter, setStatusFilter] = useState<MessageStatusFilter>('all');
   const [typeFilter, setTypeFilter] = useState<MessageTypeFilter>('all');
   const [dateFilter, setDateFilter] = useState<string>('');
   const [replyTextMap, setReplyTextMap] = useState<Record<string, string>>({});
   const [submittingReplyId, setSubmittingReplyId] = useState<string | null>(null);
+  const [isBroadcastOpen, setIsBroadcastOpen] = useState(false);
+  const [broadcastLocale, setBroadcastLocale] = useState<'vi' | 'en' | 'ru' | 'zh'>('vi');
+  const [broadcastTranslations, setBroadcastTranslations] = useState<Record<'vi' | 'en' | 'ru' | 'zh', { title: string; description: string }>>({
+    vi: { title: '', description: '' },
+    en: { title: '', description: '' },
+    ru: { title: '', description: '' },
+    zh: { title: '', description: '' },
+  });
+  const [sendingBroadcast, setSendingBroadcast] = useState(false);
+  const [broadcastMessage, setBroadcastMessage] = useState('');
+
+  const normalizeOverviewStats = (raw: Record<string, unknown>): AdminStats => ({ totalUsers: Number(raw.total_users ?? 0), totalBills: Number(raw.total_bills ?? raw.totalBills ?? 0), totalShares: Number(raw.total_shares ?? 0), totalAmountVnd: Number(raw.total_amount_vnd ?? raw.total_volume_vnd ?? raw.totalAmountVnd ?? 0), totalAmountRub: Number(raw.total_amount_rub ?? raw.total_volume_rub ?? raw.totalAmountRub ?? 0), pendingMessages: Number(raw.pending_messages ?? stats.pendingMessages ?? 0) });
+  const normalizeUserRow = (raw: Record<string, unknown>): AdminUserRow => ({ id: String(raw.id ?? ''), email: String(raw.email ?? ''), display_name: String(raw.display_name ?? raw.name ?? raw.email ?? ''), role: String(raw.role ?? 'user'), created_at: String(raw.created_at ?? new Date().toISOString()), last_sign_in_at: raw.last_sign_in_at ? String(raw.last_sign_in_at) : null, bill_count: Number(raw.bills_count ?? 0), bills_count: Number(raw.bills_count ?? 0), shared_count: Number(raw.shared_count ?? 0), has_qr: Boolean(raw.has_qr) });
+  const formatMoney = (value: number, currency: 'VND' | 'RUB') => new Intl.NumberFormat(locale === 'vi' ? 'vi-VN' : locale === 'ru' ? 'ru-RU' : locale === 'zh' ? 'zh-CN' : 'en-US', { maximumFractionDigits: 0 }).format(value) + ` ${currency}`;
+  const updateBroadcastField = (field: 'title' | 'description', value: string) => {
+    setBroadcastTranslations((current) => ({
+      ...current,
+      [broadcastLocale]: { ...current[broadcastLocale], [field]: value },
+    }));
+  };
+
+  const handleSendBroadcast = async (event: FormEvent) => {
+    event.preventDefault();
+    const defaultTranslation = broadcastTranslations.vi;
+    if (!supabase || !defaultTranslation.title.trim() || !defaultTranslation.description.trim()) return;
+    setSendingBroadcast(true);
+    try {
+      const { data, error } = await supabase.rpc('get_admin_users_list');
+      if (error) throw error;
+      const rows = (data ?? []) as Array<Record<string, unknown>>;
+      const i18n = Object.fromEntries(
+        (['vi', 'en', 'ru', 'zh'] as const).map((language) => [language, {
+          title: broadcastTranslations[language].title.trim() || defaultTranslation.title.trim(),
+          description: broadcastTranslations[language].description.trim() || defaultTranslation.description.trim(),
+        }]),
+      );
+      const notifications = rows
+        .map((row) => String(row.id ?? row.user_id ?? ''))
+        .filter(Boolean)
+        .map((userId) => ({
+          user_id: userId,
+          type: 'system_announcement',
+          title: defaultTranslation.title.trim(),
+          description: defaultTranslation.description.trim(),
+          data: { i18n },
+          is_read: false,
+        }));
+      if (!notifications.length) throw new Error(t('adminNoRecipients', locale));
+      const result = await supabase.from('notifications').insert(notifications);
+      if (result.error) throw result.error;
+      setBroadcastMessage(t('adminBroadcastSuccess', locale));
+      setBroadcastTranslations({ vi: { title: '', description: '' }, en: { title: '', description: '' }, ru: { title: '', description: '' }, zh: { title: '', description: '' } });
+      setBroadcastLocale('vi');
+      setIsBroadcastOpen(false);
+    } catch (error) {
+      setBroadcastMessage(error instanceof Error ? error.message : t('adminBroadcastError', locale));
+    } finally {
+      setSendingBroadcast(false);
+    }
+  };
 
   const fetchAllAdminData = async () => {
     if (!supabase) return;
     setLoading(true);
 
     try {
-      const { data: rpcStats, error: statsErr } = await supabase.rpc('admin_get_stats');
+      const { data: rpcStats, error: statsErr } = await supabase.rpc('get_admin_overview_stats');
+      if (statsErr) {
+        console.error('Lỗi RPC get_admin_overview_stats (kiểm tra quyền truy cập/RLS):', statsErr);
+      }
       if (!statsErr && rpcStats) {
-        setStats(rpcStats as AdminStats);
+        const rawStats = Array.isArray(rpcStats) ? rpcStats[0] : rpcStats;
+        setStats(normalizeOverviewStats((rawStats ?? {}) as Record<string, unknown>));
       }
 
-      const { data: rpcUsers, error: usersErr } = await supabase.rpc('admin_get_users');
+      const { data: rpcUsers, error: usersErr } = await supabase.rpc('get_admin_users_list');
       if (!usersErr && rpcUsers) {
-        setUsersList(rpcUsers as AdminUserRow[]);
+        setUsersList((rpcUsers as Array<Record<string, unknown>>).map(normalizeUserRow));
       }
 
       const { data: messagesData } = await supabase
@@ -132,7 +208,8 @@ export function AdminPage() {
 
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+      const supabaseKey = (import.meta.env.VITE_SUPABASE_ANON_KEY ??
+        import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY) as string;
 
       const tempClient = createClient(supabaseUrl, supabaseKey, {
         auth: { persistSession: false, autoRefreshToken: false },
@@ -208,7 +285,7 @@ export function AdminPage() {
         await supabase.from('notifications').insert({
           user_id: msg.user_id,
           type: 'support_reply',
-          title: 'Phản hồi từ Quản trị viên',
+          title: 'Phản hồi tới Quản trị viên',
           description: `Admin đã trả lời yêu cầu "${msg.message.slice(0, 35)}...": ${text}`,
           is_read: false,
           data: { messageId: msg.id },
@@ -244,7 +321,7 @@ export function AdminPage() {
   };
 
   const formatDateTime = (iso: string | null) => {
-    if (!iso) return 'Chưa từng đăng nhập';
+    if (!iso) return 'Chưa đăng nhập';
     const d = new Date(iso);
     return d.toLocaleString('vi-VN', {
       hour: '2-digit',
@@ -318,7 +395,7 @@ export function AdminPage() {
                   {user?.email}
                 </span>
               </div>
-              <p className="text-xs text-ink-3">Hệ thống quản trị người dùng, phân tích & CSKH</p>
+              <p className="text-xs text-ink-3">Hệ thống quản lý tài khoản, phân tích và chăm sóc khách hàng</p>
             </div>
           </div>
 
@@ -371,10 +448,18 @@ export function AdminPage() {
           <div className="flex items-center gap-2">
             <button
               type="button"
+              onClick={() => setIsBroadcastOpen(true)}
+              className="btn btn-primary text-xs inline-flex items-center gap-1.5 cursor-pointer"
+            >
+              <Megaphone className="h-3.5 w-3.5" />
+              <span>{t('adminBroadcast', locale)}</span>
+            </button>
+            <button
+              type="button"
               onClick={() => void fetchAllAdminData()}
               disabled={loading}
               className="btn btn-secondary text-xs p-2 cursor-pointer"
-              title="Làm mới dữ liệu"
+              title="Làm mới dữ liệu người dùng"
             >
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
@@ -398,7 +483,7 @@ export function AdminPage() {
               <div className="flex items-center gap-2.5 border-b border-line pb-3">
                 <UserPlus className="h-5 w-5 text-emerald-400" />
                 <div>
-                  <h2 className="text-sm font-bold text-ink-1">Thêm Người Dùng Mới</h2>
+                  <h2 className="text-sm font-bold text-ink-1">Thêm Người dùng Mới</h2>
                   <p className="text-[11px] text-ink-3">Tạo tài khoản trực tiếp vào hệ thống</p>
                 </div>
               </div>
@@ -434,7 +519,7 @@ export function AdminPage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs text-ink-3 mb-1">Mật khẩu khởi tạo *</label>
+                  <label className="block text-xs text-ink-3 mb-1">Mật khẩu tối thiểu *</label>
                   <input
                     type="password"
                     required
@@ -456,7 +541,7 @@ export function AdminPage() {
                   ) : (
                     <>
                       <UserPlus className="h-4 w-4" />
-                      <span>Tạo Người Dùng</span>
+                      <span>Tạo Người dùng</span>
                     </>
                   )}
                 </button>
@@ -493,10 +578,12 @@ export function AdminPage() {
                   <table className="w-full text-left border-collapse text-xs">
                     <thead>
                       <tr className="border-b border-line text-ink-3 uppercase text-[10px]">
-                        <th className="py-3 px-2">Người dùng</th>
-                        <th className="py-3 px-2">Vai trò</th>
-                        <th className="py-3 px-2">Số Bill</th>
-                        <th className="py-3 px-2">Đăng nhập cuối</th>
+                        <th className="py-3 px-2">{t('adminUsersColumn', locale)}</th>
+                        <th className="py-3 px-2">{t('adminRoleColumn', locale)}</th>
+                        <th className="py-3 px-2">{t('adminBillsColumn', locale)}</th>
+                        <th className="py-3 px-2">{t('adminSharedColumn', locale)}</th>
+                        <th className="py-3 px-2">{t('adminQrColumn', locale)}</th>
+                        <th className="py-3 px-2">{t('adminLastSignInColumn', locale)}</th>
                         <th className="py-3 px-2">Ngày tạo</th>
                         <th className="py-3 px-2 text-right">Thao tác</th>
                       </tr>
@@ -520,7 +607,14 @@ export function AdminPage() {
                             )}
                           </td>
                           <td className="py-3 px-2 font-mono font-semibold text-ink-1">
-                            {u.bill_count}
+                            {u.bills_count}
+                          </td>
+                          <td className="py-3 px-2 font-mono text-ink-2">{u.shared_count}</td>
+                          <td className="py-3 px-2">
+                            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold ${u.has_qr ? 'bg-emerald-500/15 text-emerald-400' : 'bg-surface-2 text-ink-3'}`}>
+                              <BadgeCheck className="h-3.5 w-3.5" />
+                              {t(u.has_qr ? 'adminQrConfigured' : 'adminQrNotConfigured', locale)}
+                            </span>
                           </td>
                           <td className="py-3 px-2 text-[11px] text-ink-2">
                             {formatDateTime(u.last_sign_in_at)}
@@ -552,7 +646,15 @@ export function AdminPage() {
 
         {activeTab === 'analytics' && (
           <div className="space-y-6">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
+              <div className="rounded-3xl border border-line bg-surface p-5 space-y-2">
+                <span className="text-xs text-ink-3 font-medium">{t('adminAmountVnd', locale)}</span>
+                <p className="text-xl font-bold font-mono text-emerald-400">{formatMoney(stats.totalAmountVnd, 'VND')}</p>
+              </div>
+              <div className="rounded-3xl border border-line bg-surface p-5 space-y-2">
+                <span className="text-xs text-ink-3 font-medium">{t('adminAmountRub', locale)}</span>
+                <p className="text-xl font-bold font-mono text-blue-400">{formatMoney(stats.totalAmountRub, 'RUB')}</p>
+              </div>
               <div className="rounded-3xl border border-line bg-surface p-5 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-ink-3 font-medium">Tổng Users đăng ký</span>
@@ -573,7 +675,7 @@ export function AdminPage() {
                 </div>
                 <p className="text-3xl font-bold font-mono text-ink-1">{activeUsersLast7Days}</p>
                 <p className="text-[11px] text-ink-3">
-                  Chiếm{' '}
+                  Chỉ số{' '}
                   {usersList.length > 0
                     ? Math.round((activeUsersLast7Days / usersList.length) * 100)
                     : 0}
@@ -603,7 +705,7 @@ export function AdminPage() {
                   {stats.totalShares + messages.length}
                 </p>
                 <p className="text-[11px] text-ink-3">
-                  {stats.totalShares} lượt share bill • {messages.length} tin nhắn hỗ trợ
+                  {stats.totalShares} lượt share bill · {messages.length} tin nhắn hỗ trợ
                 </p>
               </div>
             </div>
@@ -611,7 +713,7 @@ export function AdminPage() {
             <div className="grid gap-6 lg:grid-cols-2">
               <div className="rounded-3xl border border-line bg-surface p-6 space-y-4">
                 <h3 className="text-sm font-bold text-ink-1">
-                  Lượt đăng nhập & Sử dụng gần nhất
+                  Lượt Đăng nhập & Sử dụng gần nhất
                 </h3>
                 <div className="space-y-2.5">
                   {[...usersList]
@@ -647,7 +749,7 @@ export function AdminPage() {
                 </h3>
                 <div className="space-y-2.5">
                   {[...usersList]
-                    .sort((a, b) => b.bill_count - a.bill_count)
+                    .sort((a, b) => b.bills_count - a.bills_count)
                     .slice(0, 6)
                     .map((u, idx) => (
                       <div
@@ -664,7 +766,7 @@ export function AdminPage() {
                           </div>
                         </div>
                         <span className="font-mono font-bold text-ink-1">
-                          {u.bill_count} hóa đơn
+                          {u.bills_count} hóa đơn
                         </span>
                       </div>
                     ))}
@@ -680,7 +782,7 @@ export function AdminPage() {
               <div>
                 <h2 className="text-base font-bold text-ink-1">Trung tâm Phản hồi Khách hàng</h2>
                 <p className="text-xs text-ink-3">
-                  Phân loại theo ngày giờ cụ thể và kiểu yêu cầu
+                  Phân loại theo ngày, giải quyết thắc mắc & CSKH
                 </p>
               </div>
 
@@ -723,7 +825,7 @@ export function AdminPage() {
                       {sKey === 'all'
                         ? 'Tất cả'
                         : sKey === 'pending'
-                        ? 'Chờ trả lời'
+                        ? 'Chưa xử lý'
                         : 'Đã giải quyết'}
                     </button>
                   ))}
@@ -807,11 +909,11 @@ export function AdminPage() {
                             <div className="flex items-center gap-2 text-[11px] text-ink-3 font-mono">
                               <Clock className="h-3.5 w-3.5 text-emerald-400" />
                               <span>{formatDateTime(msg.created_at)}</span>
-                              <span>•</span>
+                              <span>Đã xử lý</span>
                               {msg.status === 'resolved' ? (
                                 <span className="inline-flex items-center gap-1 text-emerald-400 font-sans font-semibold">
                                   <CheckCircle2 className="h-3.5 w-3.5" />
-                                  Đã trả lời
+                                  Chưa xử lý · Trả lời
                                 </span>
                               ) : (
                                 <span className="inline-flex items-center gap-1 text-amber-400 font-sans font-semibold">
@@ -885,6 +987,30 @@ export function AdminPage() {
             )}
           </div>
         )}
+      {isBroadcastOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true">
+          <form onSubmit={handleSendBroadcast} className="w-full max-w-md rounded-3xl border border-line bg-surface p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-bold text-ink-1">{t('adminBroadcast', locale)}</h2>
+              <button type="button" onClick={() => setIsBroadcastOpen(false)} className="text-ink-3 hover:text-ink-1 text-xl cursor-pointer" aria-label={t('close', locale)}>x</button>
+            </div>
+            <div className="flex flex-wrap gap-2" role="tablist" aria-label="Ngôn ngữ thông báo">
+              {(['vi', 'en', 'ru', 'zh'] as const).map((language) => (
+                <button key={language} type="button" role="tab" aria-selected={broadcastLocale === language} onClick={() => setBroadcastLocale(language)} className={`rounded-lg px-3 py-1.5 text-xs font-semibold cursor-pointer ${broadcastLocale === language ? 'bg-emerald-500 text-neutral-950' : 'bg-surface-2 text-ink-2'}`}>
+                  {{ vi: 'Tiếng Việt', en: 'English', ru: 'Русский', zh: '中文' }[language]}
+                </button>
+              ))}
+            </div>
+            <label className="block text-xs text-ink-3">{t('adminBroadcastTitle', locale)}{broadcastLocale === 'vi' && ' · Mặc định'}<input required={broadcastLocale === 'vi'} value={broadcastTranslations[broadcastLocale].title} onChange={(e) => updateBroadcastField('title', e.target.value)} className="field mt-1 w-full text-sm" /></label>
+            <label className="block text-xs text-ink-3">{t('adminBroadcastDescription', locale)}{broadcastLocale === 'vi' && ' · Mặc định'}<textarea required={broadcastLocale === 'vi'} rows={5} value={broadcastTranslations[broadcastLocale].description} onChange={(e) => updateBroadcastField('description', e.target.value)} className="field mt-1 w-full text-sm resize-none" /></label>
+            <p className="text-xs text-ink-3">Các bản dịch để trống sẽ dùng nội dung tiếng Việt mặc định.</p>
+            <button type="submit" disabled={sendingBroadcast} className="btn btn-primary w-full flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50">
+              {sendingBroadcast ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}{t('adminBroadcastSend', locale)}
+            </button>
+          </form>
+        </div>
+      )}
+      {broadcastMessage && <div className="fixed bottom-5 right-5 z-50 max-w-sm rounded-xl border border-emerald-500/30 bg-surface p-3 text-xs text-emerald-400 shadow-xl">{broadcastMessage}</div>}
       </main>
     </div>
   );

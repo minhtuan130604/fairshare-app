@@ -1,4 +1,6 @@
 import { useBillStore } from '../../store/useBillStore';
+import { useAuthStore } from '../../store/useAuthStore';
+import { isBillReadOnly } from '../../types/bill';
 import { calculateBillTotals, calculateMemberBreakdowns } from '../../utils/calculations';
 import { formatCurrency, formatShortDate } from '../../utils/formatters';
 import { Avatar } from '../ui/Avatar';
@@ -6,13 +8,14 @@ import { useLocale, t } from '../../hooks/useLocale';
 
 export function LiveReceiptCard() {
   const { currentBill, updateTax, updateTip } = useBillStore();
+  const { user } = useAuthStore();
   const { locale } = useLocale();
 
   if (!currentBill) return null;
 
   const members = Array.isArray(currentBill.members) ? currentBill.members : [];
   const currency = currentBill.currency || 'VND';
-  const isReadOnly = Boolean(currentBill.isSharedBill);
+  const isReadOnly = isBillReadOnly(currentBill, user?.id);
   const isTimeline = currentBill.mode === 'TIMELINE';
 
   const breakdowns = calculateMemberBreakdowns(currentBill);

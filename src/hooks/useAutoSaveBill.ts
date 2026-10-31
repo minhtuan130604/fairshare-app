@@ -22,7 +22,10 @@ export function useAutoSaveBill(debounceMs = 600) {
     }
 
     // 2. Không tự động lưu nếu đây là hóa đơn được chia sẻ (chế độ chỉ xem)
-    const isShared = Boolean(currentBill.isSharedBill || (currentBill as any).shareId);
+    const isShared = Boolean(
+      (currentBill.isSharedBill || (currentBill as any).shareId) &&
+      (currentBill as any).user_id !== user.id,
+    );
     if (isShared) {
       setStatus('idle');
       return;

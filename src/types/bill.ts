@@ -1,3 +1,5 @@
+
+
 export type CurrencyCode = 'VND' | 'RUB';
 export type Currency = CurrencyCode; // Alias tương thích với các component dùng type Currency
 
@@ -57,6 +59,7 @@ export interface BillSession {
   shareId?: string;
   sharedBy?: string;
   isSharedBill?: boolean;
+  user_id?: string;
   transfer_confirmations?: Record<string, { payerConfirmed: boolean; receiverConfirmed: boolean }>;
   settled_transfers?: string[]; // Lưu mảng key các khoản chuyển khoản đã tick hoàn thành
 }
@@ -97,6 +100,7 @@ export interface BillSession {
   currency: CurrencyCode;
   members: Member[];
   items: ExpenseItem[];
+  timelineMembers?: Member[];
   paidByMemberId: string;
   taxPercent: number;
   tipPercent: number;
@@ -104,9 +108,18 @@ export interface BillSession {
   mode?: BillMode;
   expenses?: BillExpense[];
   category?: BillCategory; // <-- Thêm trường danh mục
+  user_id?: string;
   isSharedBill?: boolean;
   shareId?: string;
   sharedBy?: string;
   transfer_confirmations?: Record<string, { payerConfirmed: boolean; receiverConfirmed: boolean }>;
   settled_transfers?: string[];
 }
+
+export const isBillReadOnly = (bill: BillSession | null | undefined, userId?: string) =>
+  Boolean(
+    bill?.isSharedBill &&
+    bill.user_id &&
+    userId &&
+    bill.user_id !== userId
+  );

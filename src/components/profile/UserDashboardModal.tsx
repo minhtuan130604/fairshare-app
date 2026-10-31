@@ -710,7 +710,7 @@ export function UserDashboardModal({ isOpen, onClose, defaultTab = 'bills' }: Us
                                   ...bill,
                                   items: Array.isArray(bill.items) ? bill.items : [],
                                   members: Array.isArray(bill.members) ? bill.members : [],
-                                  isSharedBill: true,
+                                  isSharedBill: Boolean(bill.user_id && user?.id && bill.user_id !== user.id),
                                 },
                               });
                               onClose();
@@ -739,7 +739,7 @@ export function UserDashboardModal({ isOpen, onClose, defaultTab = 'bills' }: Us
                                     ...bill,
                                     items: Array.isArray(bill.items) ? bill.items : [],
                                     members: Array.isArray(bill.members) ? bill.members : [],
-                                     isSharedBill: true,
+                                     isSharedBill: Boolean(bill.user_id && user?.id && bill.user_id !== user.id),
                                   },
                                 });
                                 onClose();

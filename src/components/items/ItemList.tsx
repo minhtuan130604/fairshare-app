@@ -1,5 +1,7 @@
 import { ShoppingBag, Trash2 } from 'lucide-react';
 import { useBillStore } from '../../store/useBillStore';
+import { useAuthStore } from '../../store/useAuthStore';
+import { isBillReadOnly } from '../../types/bill';
 import { ItemCard } from './ItemCard';
 import { AnimatePresence } from 'framer-motion';
 import { useLocale, t } from '../../hooks/useLocale';
@@ -17,7 +19,8 @@ export function ItemList() {
     (item) => !Array.isArray(item.assignedMemberIds) || item.assignedMemberIds.length === 0
   ).length;
 
-  const isReadOnly = Boolean(currentBill.isSharedBill);
+  const { user } = useAuthStore();
+  const isReadOnly = isBillReadOnly(currentBill, user?.id);
 
   const clearAllLabel =
     locale === 'en'

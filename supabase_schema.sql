@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS public.bills (
 -- Bật RLS
 ALTER TABLE public.bills ENABLE ROW LEVEL SECURITY;
 
--- Chính sách RLS: Chỉ cho phép chủ sở hữu truy cập
+-- Chính sách RLS: Chủ sở hữu quản lý hóa đơn; người nhận được share có thể đọc.
 CREATE POLICY "Người dùng chỉ có thể quản lý hóa đơn của chính mình" ON public.bills
   FOR ALL
   USING (auth.uid() = user_id)
@@ -84,6 +84,19 @@ CREATE POLICY "Người nhận có thể cập nhật xác nhận hóa đơn" ON
         AND bill_shares.receiver_id = auth.uid()
     )
   );
+
+-- Cho phép người nhận đọc bill sau khi có bản ghi bill_shares.
+CREATE POLICY "Người nhận có thể đọc hóa đơn được chia sẻ" ON public.bills
+  FOR SELECT
+  USING (
+    auth.uid() = user_id
+    OR EXISTS (
+      SELECT 1 FROM public.bill_shares
+      WHERE bill_shares.bill_id = bills.id
+        AND bill_shares.receiver_id = auth.uid()
+    )
+  );
+
 
 -- Trigger tự động cập nhật updated_at cho bills
 CREATE OR REPLACE FUNCTION public.update_updated_at_column()

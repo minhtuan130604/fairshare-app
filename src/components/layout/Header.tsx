@@ -12,6 +12,7 @@ import {
   Inbox, 
   MessageSquareText,
   DollarSign,
+  Megaphone,
 } from 'lucide-react';
 import { useBillStore } from '../../store/useBillStore';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -59,6 +60,14 @@ export function Header({ activePage, onNavigate }: HeaderProps) {
   const { profile } = useProfileStore();
   const { theme, toggleTheme, currentBill, history, loadBillFromHistory } = useBillStore();
   const { locale } = useLocale();
+
+  const getLocalizedNotificationText = (notification: { title: string; description: string; data?: { i18n?: Partial<Record<'vi' | 'en' | 'ru' | 'zh', { title?: string; description?: string }>> } }) => {
+    const translation = notification.data?.i18n?.[locale];
+    return {
+      title: translation?.title || notification.title,
+      description: translation?.description || notification.description,
+    };
+  };
   const notifications = useNotificationStore((state) => state.notifications);
   const fetchNotifications = useNotificationStore((state) => state.fetchNotifications);
   const markAsRead = useNotificationStore((state) => state.markAsRead);
@@ -283,8 +292,12 @@ export function Header({ activePage, onNavigate }: HeaderProps) {
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-3 px-3 sm:px-6 lg:px-8">
           {/* Logo Brand */}
           <div className="flex shrink-0 items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent text-accent-ink">
-              <Receipt className="h-5 w-5" />
+            <div className="relative flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-emerald-500/30 bg-surface shadow-sm">
+              <img
+                src="/logo.png"
+                alt="FairShare Logo"
+                className="h-full w-full object-cover scale-125"
+              />
             </div>
             <span className="hidden text-lg font-bold tracking-tight sm:block font-sans">FairShare</span>
           </div>
@@ -415,6 +428,7 @@ export function Header({ activePage, onNavigate }: HeaderProps) {
                       notifications.map((notification) => {
                         const notifType = notification.type as string;
 
+                        const localizedText = getLocalizedNotificationText(notification);
                         return (
                           <button
                             key={notification.id}
@@ -428,7 +442,7 @@ export function Header({ activePage, onNavigate }: HeaderProps) {
                                 return;
                               }
 
-                              const targetBillId = notification.data?.billId || (notification as any).bill_id;
+                              const targetBillId = notification.data?.billId || notification.data?.shareId || (notification as any).bill_id;
                               if (targetBillId) {
                                 loadBillFromHistory(targetBillId);
                               }
@@ -443,7 +457,9 @@ export function Header({ activePage, onNavigate }: HeaderProps) {
                           >
                             <span
                               className={`mt-0.5 rounded-lg p-2 shrink-0 ${
-                                notifType === 'support_reply'
+                                notifType === 'system_announcement'
+                                  ? 'bg-teal-500/20 text-teal-300'
+                                  : notifType === 'support_reply'
                                   ? 'bg-emerald-500/20 text-emerald-300'
                                   : notifType === 'friend_request'
                                   ? 'bg-blue-400/15 text-blue-300'
@@ -452,7 +468,9 @@ export function Header({ activePage, onNavigate }: HeaderProps) {
                                   : 'bg-emerald-400/15 text-emerald-300'
                               }`}
                             >
-                              {notifType === 'support_reply' ? (
+                              {notifType === 'system_announcement' ? (
+                                <Megaphone className="h-4 w-4" />
+                              ) : notifType === 'support_reply' ? (
                                 <MessageSquareText className="h-4 w-4" />
                               ) : notifType === 'friend_request' ? (
                                 <UserRound className="h-4 w-4" />
@@ -463,20 +481,11 @@ export function Header({ activePage, onNavigate }: HeaderProps) {
                               )}
                             </span>
                             <span className="min-w-0 flex-1">
-                              <span className="block text-xs font-semibold">
-                                {notifType === 'support_reply'
-                                  ? copy.adminReplyNotification
-                                  : notifType === 'transfer_reported'
-                                  ? copy.reportedPaidTitle
-                                  : t(
-                                      notifType === 'friend_request'
-                                        ? 'newFriendRequest'
-                                        : 'billSharedWithYou',
-                                      locale,
-                                    )}
-                              </span>
+                              <h4 className="block text-xs font-semibold">
+                                {localizedText.title || (notification.type === 'bill_shared' ? t('billSharedTitle', locale) : 'Thông báo')}
+                              </h4>
                               <span className="mt-1 block text-xs leading-5 text-white/55">
-                                {notification.description}
+                                {localizedText.description}
                               </span>
                               <span className="mt-1 block text-[10px] text-white/35 font-mono">
                                 {relativeTime(notification.createdAt)}

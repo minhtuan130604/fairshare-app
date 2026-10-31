@@ -1,6 +1,7 @@
 import { Plus, Trash2, Crown, Users, BookmarkPlus, X, Check } from 'lucide-react';
 import { useBillStore } from '../../store/useBillStore';
 import { useAuthStore } from '../../store/useAuthStore';
+import { isBillReadOnly } from '../../types/bill';
 import { useProfileStore } from '../../store/useProfileStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useEffect, useMemo, type FormEvent } from 'react';
@@ -18,10 +19,10 @@ function normalizeString(str: string): string {
     .toLowerCase()
     .trim();
 }
-
 interface CloudProfileCandidate {
-  id: string;
   name: string;
+  id: string;
+
   avatar_url?: string;
   bank_name?: string;
   account_number?: string;
@@ -52,7 +53,7 @@ export function MemberManager() {
   const [groupNameInput, setGroupNameInput] = useState('');
   const [feedbackMessage, setFeedbackMessage] = useState('');
   const { locale } = useLocale();
-  const isReadOnly = Boolean(currentBill?.isSharedBill);
+  const isReadOnly = isBillReadOnly(currentBill, user?.id);
 
   const [cloudFriends, setCloudFriends] = useState<CloudProfileCandidate[]>([]);
 
@@ -64,7 +65,7 @@ export function MemberManager() {
         // Lấy tất cả profiles hiện có để vừa phục vụ tìm kiếm vừa đồng bộ tên mới nhất
         const { data: profiles, error } = await supabase
           .from('profiles')
-          .select('*');
+          .select('id, display_name, avatar_url, bank_name, account_number, account_holder, phone_number, russia_bank, custom_qr_url, russia_account_holder, russia_qr_url');
 
         if (error || !profiles) return;
 

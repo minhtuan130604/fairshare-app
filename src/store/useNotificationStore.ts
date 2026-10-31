@@ -1,8 +1,10 @@
+
+
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from './useAuthStore';
 
-export type NotificationType = 'friend_request' | 'bill_shared' | 'support_reply';
+export type NotificationType = 'friend_request' | 'bill_shared' | 'support_reply' | 'system_announcement';
 
 export interface AppNotification {
   id: string;
@@ -11,7 +13,13 @@ export interface AppNotification {
   description: string;
   createdAt: string;
   isRead: boolean;
-  data?: { requestId?: string; billId?: string; messageId?: string };
+  data?: {
+    requestId?: string;
+    billId?: string;
+    shareId?: string;
+    messageId?: string;
+    i18n?: Partial<Record<'vi' | 'en' | 'ru' | 'zh', { title?: string; description?: string }>>;
+  };
 }
 
 interface NotificationState {
@@ -88,6 +96,13 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
         .order('replied_at', { ascending: false })
         .limit(10);
 
+      const { data: systemRows } = await supabase
+        .from('notifications')
+        .select('id, type, title, description, data, is_read, created_at')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(50);
+
       const readIds = getReadIds(user.id);
 
       const friendNotifications: AppNotification[] = (friendshipRows || []).map((row) => {
@@ -134,8 +149,18 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
         };
       });
 
+      const systemNotifications: AppNotification[] = (systemRows || []).map((row: any) => ({
+        id: row.id,
+        type: row.type as NotificationType,
+        title: row.title || row.type,
+        description: row.description || '',
+        createdAt: row.created_at || new Date().toISOString(),
+        isRead: Boolean(row.is_read) || readIds.has(row.id),
+        data: row.data || undefined,
+      }));
+
       set({
-        notifications: [...friendNotifications, ...billNotifications, ...supportNotifications].sort(
+        notifications: [...systemNotifications, ...friendNotifications, ...billNotifications, ...supportNotifications].sort(
           (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
         ),
         isLoading: false,
@@ -152,6 +177,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     const ids = getReadIds(user.id);
     ids.add(notificationId);
     saveReadIds(user.id, ids);
+    void supabase?.from('notifications').update({ is_read: true }).eq('id', notificationId).eq('user_id', user.id);
     set({ notifications: get().notifications.map((notification) => notification.id === notificationId ? { ...notification, isRead: true } : notification) });
   },
 
