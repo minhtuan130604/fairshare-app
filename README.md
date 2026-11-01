@@ -1,68 +1,88 @@
-# FairShare — Chia hóa đơn nhóm
+# FairShare — Chia hóa đơn nhóm thông minh
 
-FairShare là ứng dụng web React + TypeScript để chia hóa đơn theo món, tính thuế/phí, tối ưu các khoản chuyển tiền và xuất bản tóm tắt để chia sẻ.
+FairShare là ứng dụng web hiện đại (React 18 + TypeScript + Tailwind CSS) giúp chia hóa đơn nhóm theo món ăn, phân bổ thuế/phí theo tỷ lệ thực tế, tối ưu hóa các khoản chuyển tiền nợ và quét hóa đơn tự động bằng AI.
+
+Hệ thống kết nối Backend Supabase (Auth, Cloud Sync, Realtime), hỗ trợ thanh toán VietQR / СБП và giao diện đa ngôn ngữ (VI, EN, RU, ZH).
+
+---
+
+## Trải nghiệm trực tiếp (Live Demo)
+
+- **Website chính thức:** [https://fairshair-app.vercel.app](https://fairshair-app.vercel.app)
+- **Nền tảng hỗ trợ:** Web Responsive (Desktop, Tablet, Mobile) & Progressive Web App (PWA).
+
+---
 
 ## Tính năng chính
 
-- Thêm thành viên, món ăn, số lượng và người cùng chia từng món.
-- Chia thuế/phí theo tỷ lệ, hỗ trợ VND, RUB, USD và EUR.
-- Tính các khoản chuyển tiền giữa thành viên và đánh dấu đã thanh toán.
-- Giao diện sáng/tối, lưu trạng thái trong trình duyệt.
-- Chuyển ngôn ngữ giao diện: Tiếng Việt, English, Русский và 中文.
-- Quét ảnh hóa đơn để gợi ý tên món, số lượng, đơn giá và tổng tiền; người dùng có thể rà soát trước khi thêm.
-- Chia sẻ hóa đơn bằng URL, sao chép nội dung hoặc xuất ảnh PNG.
+- **Chia hóa đơn theo món:** Chọn từng thành viên chia từng món ăn cụ thể thay vì chia cào bằng.
+- **Tính thuế & phí theo tỷ lệ:** Phân bổ VAT, phí dịch vụ và giảm giá chính xác theo số tiền thực tế mỗi người sử dụng.
+- **Đa tiền tệ:** Hỗ trợ linh hoạt 4 đơn vị tiền tệ chính: `VND (₫)`, `RUB (₽)`.
+- **Tối ưu thanh toán nợ:** Thuật toán giải quyết nợ chéo giúp tối thiểu hóa số lần chuyển tiền và tạo mã thanh toán nhanh qua **VietQR** (Việt Nam) hoặc **СБП** (Nga).
+- **Quét hóa đơn bằng AI:** Tự động nhận diện tên món, đơn giá và tổng hóa đơn qua **Google Gemini Vision API** (kèm chế độ dự phòng **OCR cục bộ Tesseract.js** khi ngoại tuyến).
+- **Đồng bộ thời gian thực:** Đăng nhập an toàn qua **Google OAuth**, lưu trữ đám mây và đồng bộ tức thì trên nhiều thiết bị với **Supabase**.
+- **Nhóm hóa đơn (Timeline Trips):** Quản lý chi phí tập trung cho các chuyến du lịch, sự kiện nhiều ngày theo dòng thời gian.
+- **Trang Quản trị & Thông báo hệ thống:** Theo dõi KPI vận hành, gửi broadcast thông báo toàn cục dạng popup modal đa ngôn ngữ tức thì.
+- **PWA & Giao diện hiện đại:** Hỗ trợ Dark/Light mode, khả năng cài đặt ứng dụng về màn hình chính điện thoại (PWA) với logo nhận diện thương hiệu sắc nét.
 
-## Chạy ứng dụng
+---
 
-Cần Node.js tương thích với phiên bản Vite trong `package.json`.
+## Cấu hình môi trường (`.env`)
+
+Sao chép file cấu hình mẫu:
 
 ```bash
+# Trên Windows CMD
+copy .env.example .env
+
+# Trên PowerShell / Linux / macOS
+cp .env.example .env
+Điền các biến môi trường vào file .env:
+
+Фрагмент кода
+# Google Gemini Vision API (Dùng cho AI OCR)
+VITE_GEMINI_API_KEY=your_gemini_api_key_here
+
+# Supabase Backend (Auth, Database & Realtime)
+VITE_SUPABASE_URL=your_supabase_project_url
+VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
+Lưu ý bảo mật: Không commit file .env chứa khóa thật lên các kho lưu trữ công khai. Đối với các biến môi trường khi triển khai trên Vercel / Netlify, hãy thiết lập trực tiếp trong mục Settings -> Environment Variables.
+
+Cài đặt và Khởi chạy
+Yêu cầu môi trường đã cài đặt Node.js (khuyến nghị phiên bản 18 trở lên).
+
+Bash
+# 1. Cài đặt các gói phụ thuộc
 npm install
+
+# 2. Khởi chạy máy chủ phát triển (Development)
 npm run dev
-```
 
-Kiểm tra mã và build bản phát hành:
-
-```bash
+# 3. Kiểm tra mã nguồn và build phát hành (Production Build)
 npm test
 npm run build
-```
-
-## Quét hóa đơn và cấu hình AI
-
-Gemini Vision là công cụ nhận diện mặc định để đọc tên món, số lượng, đơn giá và tổng tiền. Khóa API được đọc từ `.env` ở thư mục dự án:
-
-Trên Windows CMD, chạy lệnh sau trong thư mục dự án:
-
-```bat
-copy .env.example .env
-```
-
-Sau đó mở `.env`, thêm hoặc thay dòng bằng khóa API mới của bạn:
-
-```dotenv
-VITE_GEMINI_API_KEY=PASTE_YOUR_NEW_KEY_HERE
-```
-
-Trước khi chạy, hãy điền khóa mới của bạn vào `.env`. Không chia sẻ file `.env`. Nếu thiếu khóa hoặc Gemini báo lỗi, ứng dụng sẽ hiển thị lỗi thay vì âm thầm chấp nhận kết quả OCR kém chính xác. Với lỗi tạm thời như HTTP 503/429, ứng dụng tự thử lại có thời gian chờ tăng dần, sau đó thử model Gemini Flash ổn định khác. Tại màn hình lỗi, người dùng vẫn có thể chủ động chọn **OCR cục bộ**; kết quả sẽ được đánh dấu rõ là dùng Tesseract.
-
-**Lưu ý bảo mật:** biến có tiền tố `VITE_` được đưa vào bundle phía trình duyệt. ZIP không chứa file `.env` hay khóa API. Vì khóa phía trình duyệt có thể bị người dùng cuối xem được khi chạy ứng dụng, không dùng cách này cho một ứng dụng công khai; hãy hạn chế khóa theo API/referrer và quota hoặc chuyển lệnh gọi Gemini qua backend.
-
-## Cấu trúc
-
-```text
-fairshair-app/
-├── public/
+Cấu trúc thư mục
+Plaintext
+fairshare-app/
+├── public/                     # Tài nguyên tĩnh: logo.png, favicon.svg, manifest.webmanifest
 ├── src/
-│   ├── components/
-│   ├── hooks/
-│   ├── store/
-│   ├── types/
-│   └── utils/
-├── .env.example
-├── index.html
-├── package.json
-└── ...các cấu hình TypeScript/Vite
-```
-
-`node_modules` và bản build `dist` không được đóng gói; cài thư viện bằng `npm install` trên máy cần chạy ứng dụng. File `.env` trong gói này chứa cấu hình riêng và phải được giữ kín.
+│   ├── components/             # Các khối UI tái sử dụng
+│   │   ├── analytics/          # Biểu đồ và phân tích chi tiêu
+│   │   ├── auth/               # Modal đăng nhập, Landing page giới thiệu
+│   │   ├── bill/               # Danh mục chi tiêu, chi tiết hóa đơn
+│   │   ├── items/              # Quản lý danh sách món, form thêm nhanh, timeline
+│   │   ├── layout/             # Header, Footer, Điều khiển hóa đơn, Modal thông báo toàn cục
+│   │   ├── members/            # Quản lý thành viên trong nhóm
+│   │   ├── profile/            # Trang cá nhân và cài đặt người dùng
+│   │   └── summary/            # Dòng tiền trả nợ, Live Receipt, xuất hóa đơn
+│   ├── hooks/                  # Custom React hooks (useLocale, useAutoSaveBill,...)
+│   ├── pages/                  # Các trang chính (App, HistoryPage, AdminPage)
+│   ├── store/                  # Quản lý State toàn cục bằng Zustand (Auth, Bill, Notification, Profile)
+│   ├── types/                  # Định nghĩa TypeScript data models
+│   └── utils/                  # Thuật toán tính nợ, OCR, định dạng tiền tệ
+├── index.html                  # File HTML chính, cấu hình SEO & App Icons
+├── package.json                # Dependencies và scripts
+├── supabase_schema.sql         # SQL schema, RLS Policies và Triggers Supabase
+└── vite.config.ts              # Cấu hình Vite & PWA
+Bản quyền
+Phát triển bởi đội ngũ FairShare © 2026. Mọi quyền được bảo lưu.

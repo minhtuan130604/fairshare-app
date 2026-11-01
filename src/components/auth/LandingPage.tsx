@@ -316,7 +316,7 @@ const LANDING_COPY = {
     stat2Label: 'Мгновенное распознавание',
     stat3Val: '4 Языка',
     stat3Label: 'RU · EN · VI · ZH',
-    stat4Val: 'Синхронизация',
+    stat4Val: 'Онлайн-синхр.',
     stat4Label: 'Мгновенное обновление данных',
     navHow: 'Как работает',
     navFeatures: 'Возможности',
@@ -954,7 +954,7 @@ export function LandingPage() {
                 <BadgeCheck className="h-5 w-5" />
               </div>
               <div>
-                <div className="text-lg font-extrabold tracking-tight">{copy.stat1Val}</div>
+                <div className="font-bold text-ink text-sm sm:text-base leading-tight break-words">{copy.stat1Val}</div>
                 <div className="text-xs text-zinc-400">{copy.stat1Label}</div>
               </div>
             </div>
@@ -963,7 +963,7 @@ export function LandingPage() {
                 <Zap className="h-5 w-5" />
               </div>
               <div>
-                <div className="text-lg font-extrabold tracking-tight">{copy.stat2Val}</div>
+                <div className="font-bold text-ink text-sm sm:text-base leading-tight break-words">{copy.stat2Val}</div>
                 <div className="text-xs text-zinc-400">{copy.stat2Label}</div>
               </div>
             </div>
@@ -972,7 +972,7 @@ export function LandingPage() {
                 <Languages className="h-5 w-5" />
               </div>
               <div>
-                <div className="text-lg font-extrabold tracking-tight">{copy.stat3Val}</div>
+                <div className="font-bold text-ink text-sm sm:text-base leading-tight break-words">{copy.stat3Val}</div>
                 <div className="text-xs text-zinc-400">{copy.stat3Label}</div>
               </div>
             </div>
@@ -981,7 +981,7 @@ export function LandingPage() {
                 <ShieldCheck className="h-5 w-5" />
               </div>
               <div>
-                <div className="text-lg font-extrabold tracking-tight">{copy.stat4Val}</div>
+                <div className="font-bold text-ink text-sm sm:text-base leading-tight break-words">{copy.stat4Val}</div>
                 <div className="text-xs text-zinc-400">{copy.stat4Label}</div>
               </div>
             </div>
