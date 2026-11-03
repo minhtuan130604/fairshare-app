@@ -218,17 +218,4 @@
     scrollbar-color: var(--line) transparent;
   }
 
-  /* Tùy biến khung kéo crop kiểu scanner */
-.ReactCrop__crop-selection {
-  border: 2px solid #34d399 !important;
-  box-shadow: 0 0 0 9999em rgba(0, 0, 0, 0.65) !important;
-}
-
-.ReactCrop__drag-handle {
-  width: 14px !important;
-  height: 14px !important;
-  background-color: #10b981 !important;
-  border: 2px solid #ffffff !important;
-  border-radius: 9999px !important;
-}
 }

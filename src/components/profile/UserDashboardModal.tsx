@@ -134,10 +134,10 @@ export function UserDashboardModal({ isOpen, onClose, defaultTab = 'bills' }: Us
   const [billsSubTab, setBillsSubTab] = useState<'my' | 'shared'>('my');
 
   const [showVnSection, setShowVnSection] = useState(
-    Boolean(profile?.bank_name || profile?.account_number) || locale === 'vi'
+    Boolean(profile?.bank_name || profile?.account_number)
   );
   const [showRuSection, setShowRuSection] = useState(
-    Boolean(profile?.phone_number || profile?.russia_bank || profile?.russia_account_holder || profile?.russia_qr_url) || locale === 'ru'
+    Boolean(profile?.phone_number || profile?.russia_bank || profile?.russia_account_holder || profile?.russia_qr_url)
   );
   const [newPassword, setNewPassword] = useState('');
   const [accountMessage, setAccountMessage] = useState('');

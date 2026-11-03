@@ -1,3 +1,8 @@
+
+
+
+
+
 import type { CurrencyCode } from '../types/bill';
 
 export type ReceiptLangId = 'auto' | 'vi' | 'en' | 'zh' | 'ru';
@@ -6,8 +11,6 @@ export interface ReceiptLang {
   id: ReceiptLangId;
   /** Nhãn hiển thị trong bộ chọn ngôn ngữ */
   label: string;
-  /** traineddata của Tesseract (chuỗi nối bằng dấu +, trừ 'auto') */
-  tesseractLangs: string;
   /** Từ khóa đánh dấu dòng TỔNG tiền (khớp chuỗi con, không phân biệt hoa thường) */
   totalWords: string[];
   /** Từ khóa đánh dấu dòng PHỤ tổng — loại trừ khi nhận diện tổng tiền */
@@ -98,7 +101,6 @@ export const RECEIPT_LANGUAGES: Record<Exclude<ReceiptLangId, 'auto'>, ReceiptLa
   vi: {
     id: 'vi',
     label: 'Tiếng Việt',
-    tesseractLangs: 'vie+eng',
     totalWords: VI_WORDS.total,
     subtotalWords: VI_WORDS.subtotal,
     skipWords: VI_WORDS.skip,
@@ -106,7 +108,6 @@ export const RECEIPT_LANGUAGES: Record<Exclude<ReceiptLangId, 'auto'>, ReceiptLa
   en: {
     id: 'en',
     label: 'English',
-    tesseractLangs: 'eng',
     totalWords: EN_WORDS.total,
     subtotalWords: EN_WORDS.subtotal,
     skipWords: EN_WORDS.skip,
@@ -114,7 +115,6 @@ export const RECEIPT_LANGUAGES: Record<Exclude<ReceiptLangId, 'auto'>, ReceiptLa
   zh: {
     id: 'zh',
     label: '中文',
-    tesseractLangs: 'chi_sim+eng',
     totalWords: ZH_WORDS.total,
     subtotalWords: ZH_WORDS.subtotal,
     skipWords: ZH_WORDS.skip,
@@ -122,7 +122,6 @@ export const RECEIPT_LANGUAGES: Record<Exclude<ReceiptLangId, 'auto'>, ReceiptLa
   ru: {
     id: 'ru',
     label: 'Русский',
-    tesseractLangs: 'rus+eng',
     totalWords: RU_WORDS.total,
     subtotalWords: RU_WORDS.subtotal,
     skipWords: RU_WORDS.skip,

@@ -30,13 +30,13 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
   const { locale } = useLocale();
 
   const [displayName, setDisplayName] = useState('');
-  const [bankName, setBankName] = useState('vcb');
+  const [bankName, setBankName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [accountHolder, setAccountHolder] = useState('');
 
   // Russian payment fields (СБП)
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [russiaBank, setRussiaBank] = useState('sber');
+  const [russiaBank, setRussiaBank] = useState('');
   const [russiaAccountHolder, setRussiaAccountHolder] = useState('');
   const [russiaQrUrl, setRussiaQrUrl] = useState('');
 
@@ -46,11 +46,11 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
   useEffect(() => {
     if (isOpen) {
       setDisplayName(profile?.display_name || user?.user_metadata?.display_name || '');
-      setBankName(profile?.bank_name || 'vcb');
+      setBankName(profile?.bank_name || '');
       setAccountNumber(profile?.account_number || '');
       setAccountHolder(profile?.account_holder || '');
       setPhoneNumber(profile?.phone_number || '');
-      setRussiaBank(profile?.russia_bank || 'sber');
+      setRussiaBank(profile?.russia_bank || '');
       setRussiaAccountHolder(profile?.russia_account_holder || profile?.account_holder || '');
       setRussiaQrUrl(profile?.russia_qr_url || '');
       setSuccessMessage(null);
@@ -164,6 +164,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
                   onChange={(e) => setBankName(e.target.value)}
                   className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none transition"
                 >
+                  <option value="">Chọn ngân hàng</option>
                   {POPULAR_BANKS.map((bank) => (
                     <option key={bank.id} value={bank.id}>
                       {bank.name}

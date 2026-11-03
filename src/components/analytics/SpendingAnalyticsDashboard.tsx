@@ -27,6 +27,26 @@ import { supabase } from '../../lib/supabase';
 
 type FilterMode = 'month' | 'week' | 'year' | 'all';
 
+type DashboardCurrency = 'VND' | 'RUB';
+
+function formatMoneyLines(amounts: Record<DashboardCurrency, number>) {
+  const hasAmount = amounts.VND > 0 || amounts.RUB > 0;
+  const currencies = hasAmount
+    ? (['VND', 'RUB'] as DashboardCurrency[]).filter((currency) => amounts[currency] > 0)
+    : (['VND'] as DashboardCurrency[]);
+
+  return currencies.map((currency) => ({ currency, value: formatCurrency(amounts[currency], currency) }));
+}
+
+function CurrencyLines({ amounts, className = '' }: { amounts: Record<DashboardCurrency, number>; className?: string }) {
+  const lines = formatMoneyLines(amounts);
+  return (
+    <span className={`flex flex-col gap-0.5 ${className}`}>
+      {lines.map(({ currency, value }) => <span key={currency}>{value}</span>)}
+    </span>
+  );
+}
+
 interface CategoryMetric {
   key: string;
   name: string;
@@ -34,9 +54,9 @@ interface CategoryMetric {
   color: string;
   amount: number;
   percentage: number;
+  currency: DashboardCurrency;
 }
 
-// Bảng màu tách biệt rõ ràng cho các danh mục cố định
 const CATEGORY_META: Record<string, { label: { vi: string; en: string; ru: string; zh: string }; icon: any; color: string }> = {
   dining: { label: { vi: 'Ăn uống & Cafe', en: 'Dining & Cafe', ru: 'Рестораны и кафе', zh: '餐饮与咖啡' }, icon: Utensils, color: '#10b981' },
   shopping: { label: { vi: 'Mua sắm & Tiêu dùng', en: 'Shopping', ru: 'Покупки', zh: '购物与超市' }, icon: ShoppingBag, color: '#3b82f6' },
@@ -46,16 +66,15 @@ const CATEGORY_META: Record<string, { label: { vi: string; en: string; ru: strin
   other: { label: { vi: 'Khác', en: 'Other', ru: 'Другое', zh: '其他' }, icon: HelpCircle, color: '#64748b' },
 };
 
-// Bảng màu riêng biệt cho các danh mục tự nhập (như "Ăn hải sản", "Tiền nhà"...) để không trùng màu
 const CUSTOM_CATEGORY_PALETTE = [
-  '#f97316', // Cam đậm
-  '#06b6d4', // Cyan
-  '#ef4444', // Đỏ san hô
-  '#eab308', // Vàng tươi
-  '#a855f7', // Tím sáng
-  '#14b8a6', // Xanh ngọc biển
-  '#f43f5e', // Hồng đỏ
-  '#6366f1', // Chàm
+  '#f97316',
+  '#06b6d4',
+  '#ef4444',
+  '#eab308',
+  '#a855f7',
+  '#14b8a6',
+  '#f43f5e',
+  '#6366f1',
 ];
 
 function normalizeString(str: string): string {
@@ -76,7 +95,7 @@ export function SpendingAnalyticsDashboard() {
 
   const [filterMode, setFilterMode] = useState<FilterMode>('month');
   const [selectedDate, setSelectedDate] = useState<Date>(new Date(2026, 9, 1)); // Tháng 10/2026
-  const [profilesMap, setProfilesMap] = useState<Record<string, { display_name?: string; avatar_url?: string }>>({});
+  const [profilesMap, setProfilesMap] = useState<Record<string, { id?: string; display_name?: string; avatar_url?: string }>>({});
 
   useEffect(() => {
     async function loadFriendProfiles() {
@@ -112,6 +131,8 @@ export function SpendingAnalyticsDashboard() {
         groupSpending: 'Tổng quy mô các cuộc vui',
         totalBeforeSplit: 'Tổng chi phí cả nhóm trước khi chia tiền',
         byCategory: 'Cơ cấu chi tiêu cá nhân',
+        categoryVND: 'Cơ cấu chi tiêu (VND)',
+        categoryRUB: 'Cơ cấu chi tiêu (RUB)',
         noExpensePeriod: (label: string) => `Không có chi tiêu nào trong ${label}.`,
         frequentBuddies: 'Cạ cứng đi ăn / mua sắm nhiều nhất',
         noBuddies: (label: string) => `Chưa có dữ liệu tụ tập cùng bạn bè trong ${label}.`,
@@ -134,6 +155,8 @@ export function SpendingAnalyticsDashboard() {
         groupSpending: 'Total Group Spending',
         totalBeforeSplit: 'Total group bills before split',
         byCategory: 'Spending by Category',
+        categoryVND: 'Spending Breakdown (VND)',
+        categoryRUB: 'Spending Breakdown (RUB)',
         noExpensePeriod: (label: string) => `No expenses recorded in ${label}.`,
         frequentBuddies: 'Frequent Hangout Buddies',
         noBuddies: (label: string) => `No hangout data with buddies in ${label}.`,
@@ -156,6 +179,8 @@ export function SpendingAnalyticsDashboard() {
         groupSpending: 'Общая сумма встреч',
         totalBeforeSplit: 'Общая сумма счетов компании до разделения',
         byCategory: 'Категории расходов',
+        categoryVND: 'Категории расходов (VND)',
+        categoryRUB: 'Категории расходов (RUB)',
         noExpensePeriod: (label: string) => `Нет расходов за ${label}.`,
         frequentBuddies: 'Чаще всего проводите время с',
         noBuddies: (label: string) => `Нет совместных встреч с друзьями за ${label}.`,
@@ -178,6 +203,8 @@ export function SpendingAnalyticsDashboard() {
         groupSpending: '聚会总支出规模',
         totalBeforeSplit: '分摊前的聚会账单总金额',
         byCategory: '支出类别构成',
+        categoryVND: '支出构成 (VND)',
+        categoryRUB: '支出构成 (RUB)',
         noExpensePeriod: (label: string) => `${label} 内暂无支出记录。`,
         frequentBuddies: '聚会最频繁的好友',
         noBuddies: (label: string) => `${label} 内暂无好友聚会记录。`,
@@ -194,30 +221,36 @@ export function SpendingAnalyticsDashboard() {
 
   const myId = user?.id || profile?.id || 'member_me_default';
 
-  // Chỉ lấy tên của CHÍNH BẢN THÂN tài khoản đang đăng nhập hiện tại
-  const currentDisplayName = (
-    profile?.display_name ||
-    user?.user_metadata?.display_name ||
-    user?.user_metadata?.full_name ||
-    user?.user_metadata?.name ||
-    ''
-  ).trim();
-
+  // Lấy chính xác các tên hiển thị của tài khoản đang đăng nhập
   const myNamesList = useMemo(() => {
-    return [currentDisplayName, 'tôi', 'me']
-      .filter(Boolean)
-      .map((n) => normalizeString(n as string));
-  }, [currentDisplayName]);
+    const names = [
+      profile?.display_name,
+      user?.user_metadata?.display_name,
+      user?.user_metadata?.full_name,
+      user?.user_metadata?.name,
+      'tôi',
+      'me',
+    ];
+    return names
+      .filter((n): n is string => Boolean(n && typeof n === 'string' && n.trim().length > 0))
+      .map((n) => normalizeString(n));
+  }, [profile?.display_name, user]);
 
-  const isMe = (member: { id?: string; name?: string }) => {
+  // Nhận diện tài khoản: chỉ tính là chính chủ nếu khớp ID hoặc khớp chính xác tên tài khoản đang login
+  const isMe = (member: { id?: string; name?: string; user_id?: string; userId?: string }) => {
     if (member.id && (member.id === myId || member.id === 'member_me_default')) return true;
+    if (member.user_id && user?.id && member.user_id === user.id) return true;
+    if (member.userId && user?.id && member.userId === user.id) return true;
+
     const norm = normalizeString(member.name || '');
     if (!norm) return false;
+
+    // So khớp chính xác tuyệt đối với tên tài khoản đang đăng nhập
     return myNamesList.some((myName) => norm === myName);
   };
 
   const groupAvatarsMap = useMemo(() => {
-    const map: Record<string, string> = {};
+    const map: Record<string, { id?: string; display_name?: string; avatar_url?: string }> = {};
     (savedGroups || []).forEach((g: any) => {
       (g.members || []).forEach((gm: any) => {
         if (gm.name && gm.avatar_url) {
@@ -275,9 +308,13 @@ export function SpendingAnalyticsDashboard() {
     return i18n.allTimeLabel;
   }, [filterMode, selectedDate, weekRange, locale, i18n.allTimeLabel]);
 
-  // Lọc hóa đơn theo kỳ đang chọn
   const filteredBills: BillSession[] = useMemo(() => {
     return (history || []).filter((bill: BillSession) => {
+      const hasItems = Array.isArray(bill.items) && bill.items.length > 0;
+      const hasExpenses = Array.isArray(bill.expenses) && bill.expenses.length > 0;
+      const billTotal = calculateBillTotals(bill).total;
+      if (!hasItems && !hasExpenses && billTotal <= 0) return false;
+
       const billDate = new Date(bill.date);
       if (isNaN(billDate.getTime())) return false;
 
@@ -294,16 +331,21 @@ export function SpendingAnalyticsDashboard() {
     });
   }, [history, filterMode, selectedDate, weekRange]);
 
-  // Tính chi tiêu & màu sắc phân loại
   const stats = useMemo(() => {
-    let totalMySpent = 0;
-    let totalGroupSpent = 0;
-    const catMap: Record<string, { name: string; amount: number; color: string; icon: any }> = {};
+    const spent: Record<DashboardCurrency, number> = { VND: 0, RUB: 0 };
+    const group: Record<DashboardCurrency, number> = { VND: 0, RUB: 0 };
+    const categoryTotals: Record<DashboardCurrency, number> = { VND: 0, RUB: 0 };
+    const catMap: Record<string, { name: string; amount: number; color: string; icon: any; currency: DashboardCurrency }> = {};
     let customColorIndex = 0;
 
     filteredBills.forEach((bill) => {
+      const isRussianBill =
+        bill.currency === 'RUB' ||
+        /[а-яА-ЯёЁ]/.test(bill.title || (bill as any).name || '') ||
+        bill.items?.some((item: any) => /[а-яА-ЯёЁ]/.test(item.name || ''));
+      const currency: DashboardCurrency = isRussianBill ? 'RUB' : 'VND';
       const billTotal = calculateBillTotals(bill).total;
-      totalGroupSpent += billTotal;
+      group[currency] += billTotal;
 
       const breakdowns = calculateMemberBreakdowns(bill);
       const myBreakdown = breakdowns.find((b) => {
@@ -312,31 +354,35 @@ export function SpendingAnalyticsDashboard() {
       });
 
       const myShare = myBreakdown ? myBreakdown.totalOwed : (billTotal / (bill.members.length || 1));
-      totalMySpent += myShare;
+      spent[currency] += myShare;
+      categoryTotals[currency] += myShare;
 
       const rawCat = (bill.category || 'dining').trim();
-      if (!catMap[rawCat]) {
+      const categoryKey = `${currency}:${rawCat}`;
+      if (!catMap[categoryKey]) {
         const meta = CATEGORY_META[rawCat];
         if (meta) {
           const localizedName = meta.label[locale as 'vi' | 'en' | 'ru' | 'zh'] || meta.label.en;
-          catMap[rawCat] = {
+          catMap[categoryKey] = {
             name: localizedName,
             amount: 0,
             color: meta.color,
             icon: meta.icon,
+            currency,
           };
         } else {
           const assignedColor = CUSTOM_CATEGORY_PALETTE[customColorIndex % CUSTOM_CATEGORY_PALETTE.length];
           customColorIndex += 1;
-          catMap[rawCat] = {
+          catMap[categoryKey] = {
             name: rawCat,
             amount: 0,
             color: assignedColor,
             icon: Tag,
+            currency,
           };
         }
       }
-      catMap[rawCat].amount += myShare;
+      catMap[categoryKey].amount += myShare;
     });
 
     const categories: CategoryMetric[] = Object.entries(catMap)
@@ -345,72 +391,174 @@ export function SpendingAnalyticsDashboard() {
         name: val.name,
         icon: val.icon,
         color: val.color,
-        amount: Math.round(val.amount),
-        percentage: totalMySpent > 0 ? (val.amount / totalMySpent) * 100 : 0,
+        currency: val.currency,
+        amount: val.amount,
+        percentage: categoryTotals[val.currency] > 0 ? (val.amount / categoryTotals[val.currency]) * 100 : 0,
       }))
-      .filter((cat) => cat.amount > 0) // <-- Lọc bỏ các danh mục 0 đ
+      .filter((cat) => cat.amount > 0)
       .sort((a, b) => b.amount - a.amount);
 
-    return { totalMySpent, totalGroupSpent, categories };
+    return { spent, group, categories };
   }, [filteredBills, locale, myNamesList, myId]);
 
-  // Phân tích CẠ CỨNG: Loại trừ đúng tài khoản hiện tại, giữ lại Ouranos và các bạn bè
+  // Phân tích CẠ CỨNG: Tự động gom nhóm theo ID, Avatar URL hoặc STK/SĐT để xử lý triệt để việc đổi tên cho MỌI tài khoản
   const socialMetrics = useMemo(() => {
-    const friendFrequency: Record<string, { name: string; count: number; lastDate: Date; avatar_url?: string }> = {};
+    // Danh sách các thực thể bạn bè đã được gom nhóm
+    const friendEntities: Array<{
+      ids: Set<string>;
+      names: Set<string>;
+      avatars: Set<string>;
+      phonesOrBanks: Set<string>;
+      displayName: string;
+      latestNameDate: Date;
+      count: number;
+      lastDate: Date;
+      avatar_url?: string;
+      isProfileName: boolean;
+    }> = [];
 
-    filteredBills.forEach((bill: BillSession) => {
+    // Tạo map tra cứu nhanh từ avatar_url -> profile mới nhất trên Supabase
+    const avatarToProfileMap: Record<string, { id?: string; display_name?: string; avatar_url?: string }> = {};
+    Object.values(profilesMap).forEach((p) => {
+      if (p?.avatar_url) {
+        avatarToProfileMap[p.avatar_url.trim()] = p;
+      }
+    });
+
+    // Sắp xếp hóa đơn từ cũ đến mới để tên ở hóa đơn mới hơn tự động ghi đè tên cũ
+    const sortedBills = [...filteredBills].sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+    );
+
+    sortedBills.forEach((bill: BillSession) => {
       const billDate = new Date(bill.date);
-      (bill.members || []).forEach((m) => {
-        if (isMe(m)) return; // Bỏ qua tài khoản của chính bạn
+      // Tránh đếm trùng 1 người 2 lần trong cùng 1 hóa đơn
+      const countedEntityIndicesInThisBill = new Set<number>();
 
-        const displayName = (m.name || '').trim();
-        if (!displayName) return;
+      (bill.members || []).forEach((m: any) => {
+        if (isMe(m)) return; // Bỏ qua chính chủ đang đăng nhập
 
-        const normKey = normalizeString(displayName);
-        const matchedProfile = profilesMap[m.id] || profilesMap[normKey];
-        const latestAvatar = matchedProfile?.avatar_url || groupAvatarsMap[normKey] || m.avatar_url;
+        const rawName = (m.name || '').trim();
+        if (!rawName) return;
 
-        if (!friendFrequency[normKey]) {
-          friendFrequency[normKey] = {
-            name: displayName,
+        const normName = normalizeString(rawName);
+        const memberUserId = m.user_id || m.userId || (profilesMap[m.id] ? m.id : '');
+
+        // Tìm profile khớp qua ID, tên, hoặc qua chính avatar_url của thành viên
+        const rawAvatar = (
+          m.avatar_url ||
+          groupAvatarsMap[normName] ||
+          profilesMap[memberUserId]?.avatar_url ||
+          profilesMap[normName]?.avatar_url ||
+          ''
+        ).trim();
+
+        const matchedProfile =
+          (memberUserId ? profilesMap[memberUserId] : undefined) ||
+          profilesMap[normName] ||
+          (rawAvatar ? avatarToProfileMap[rawAvatar] : undefined);
+
+        const resolvedId = (matchedProfile as any)?.id || memberUserId || '';
+        const resolvedAvatar = (matchedProfile?.avatar_url || rawAvatar || '').trim();
+        const bankOrPhone = (m.account_number || m.phone_number || '').trim();
+
+        // Tìm xem người này đã xuất hiện trong danh sách thực thể chưa (khớp ID, Tên, Avatar hoặc STK/SĐT)
+        let entityIndex = friendEntities.findIndex((entity) => {
+          if (resolvedId && entity.ids.has(resolvedId)) return true;
+          if (entity.names.has(normName)) return true;
+          if (resolvedAvatar && entity.avatars.has(resolvedAvatar)) return true;
+          if (bankOrPhone && bankOrPhone.length >= 6 && entity.phonesOrBanks.has(bankOrPhone)) return true;
+          return false;
+        });
+
+        if (entityIndex === -1) {
+          // Tạo thực thể bạn bè mới
+          const newEntity = {
+            ids: new Set<string>(resolvedId ? [resolvedId] : []),
+            names: new Set<string>([normName]),
+            avatars: new Set<string>(resolvedAvatar ? [resolvedAvatar] : []),
+            phonesOrBanks: new Set<string>(bankOrPhone && bankOrPhone.length >= 6 ? [bankOrPhone] : []),
+            displayName: matchedProfile?.display_name || rawName,
+            latestNameDate: billDate,
             count: 0,
             lastDate: billDate,
-            avatar_url: latestAvatar,
+            avatar_url: resolvedAvatar || undefined,
+            isProfileName: Boolean(matchedProfile?.display_name),
           };
+          friendEntities.push(newEntity);
+          entityIndex = friendEntities.length - 1;
+        } else {
+          // Gộp thông tin nhận diện vào thực thể đã có
+          const entity = friendEntities[entityIndex];
+          if (resolvedId) entity.ids.add(resolvedId);
+          entity.names.add(normName);
+          if (resolvedAvatar) {
+            entity.avatars.add(resolvedAvatar);
+            entity.avatar_url = resolvedAvatar;
+          }
+          if (bankOrPhone && bankOrPhone.length >= 6) {
+            entity.phonesOrBanks.add(bankOrPhone);
+          }
+
+          // Luôn ưu tiên tên chính thức từ bảng profiles (tên mới nhất hiện tại)
+          // Hoặc nếu chưa có profile thì lấy tên từ hóa đơn có ngày mới hơn
+          if (matchedProfile?.display_name) {
+            entity.displayName = matchedProfile.display_name;
+            entity.isProfileName = true;
+          } else if (!entity.isProfileName && billDate >= entity.latestNameDate) {
+            entity.displayName = rawName;
+            entity.latestNameDate = billDate;
+          }
+
+          if (billDate > entity.lastDate) {
+            entity.lastDate = billDate;
+          }
         }
-        friendFrequency[normKey].count += 1;
-        if (latestAvatar) {
-          friendFrequency[normKey].avatar_url = latestAvatar;
-        }
-        if (billDate > friendFrequency[normKey].lastDate) {
-          friendFrequency[normKey].lastDate = billDate;
+
+        // Tăng số kèo chung (mỗi bill chỉ tính 1 lần cho mỗi người bạn)
+        if (!countedEntityIndicesInThisBill.has(entityIndex)) {
+          friendEntities[entityIndex].count += 1;
+          countedEntityIndicesInThisBill.add(entityIndex);
         }
       });
     });
 
-    const friendList = Object.values(friendFrequency);
+    const friendList = friendEntities.map((e) => ({
+      name: e.displayName,
+      count: e.count,
+      lastDate: e.lastDate,
+      avatar_url: e.avatar_url,
+    }));
+
     const topFriends = [...friendList].sort((a, b) => b.count - a.count).slice(0, 6);
 
     const now = new Date();
     const distantFriends = friendList
-      .filter((f) => (now.getTime() - f.lastDate.getTime()) > 25 * 24 * 60 * 60 * 1000)
+      .filter((f) => now.getTime() - f.lastDate.getTime() > 25 * 24 * 60 * 60 * 1000)
       .sort((a, b) => a.lastDate.getTime() - b.lastDate.getTime())
       .slice(0, 3);
 
     return { topFriends, distantFriends };
   }, [filteredBills, myNamesList, profilesMap, groupAvatarsMap, myId]);
 
-  const preferredCurrency = history?.[0]?.currency || 'VND';
+  // Chỉ lấy những loại tiền thực tế CÓ PHÁT SINH CHI TIÊU (> 0) trong kỳ đang chọn
+  const breakdownByCurrency = useMemo(() => {
+    const activeCurrencies = (['VND', 'RUB'] as DashboardCurrency[]).filter(
+      (c) => stats.spent[c] > 0
+    );
 
-  const pieSlices = useMemo(() => {
-    let accumulatedAngle = 0;
-    return stats.categories.map((cat) => {
-      const sliceAngle = (cat.percentage / 100) * 360;
-      const startAngle = accumulatedAngle;
-      accumulatedAngle += sliceAngle;
-      return { ...cat, startAngle, sliceAngle };
+    return activeCurrencies.map((currency) => {
+      const cats = stats.categories.filter((cat) => cat.currency === currency);
+      let accumulatedAngle = 0;
+      const slices = cats.map((cat) => {
+        const sliceAngle = (cat.percentage / 100) * 360;
+        const startAngle = accumulatedAngle;
+        accumulatedAngle += sliceAngle;
+        return { ...cat, startAngle, sliceAngle };
+      });
+      return { currency, categories: cats, slices };
     });
-  }, [stats.categories]);
+  }, [stats.categories, stats.spent]);
 
   return (
     <div className="space-y-6 animate-fadeIn pb-12">
@@ -482,9 +630,7 @@ export function SpendingAnalyticsDashboard() {
               <TrendingUp className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-2xl font-black mt-2 text-accent num">
-            {formatCurrency(stats.totalMySpent, preferredCurrency)}
-          </div>
+          <CurrencyLines amounts={stats.spent} className="text-2xl font-black mt-2 text-accent num" />
           <p className="text-[11px] text-ink-3 mt-1">
             {i18n.fromBills(filteredBills.length, timeLabel)}
           </p>
@@ -499,42 +645,49 @@ export function SpendingAnalyticsDashboard() {
               <PieIcon className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-2xl font-black mt-2 text-ink num">
-            {formatCurrency(stats.totalGroupSpent, preferredCurrency)}
-          </div>
+          <CurrencyLines amounts={stats.group} className="text-2xl font-black mt-2 text-ink num" />
           <p className="text-[11px] text-ink-3 mt-1">
             {i18n.totalBeforeSplit}
           </p>
         </div>
       </div>
 
-      {/* Grid: Biểu đồ & Cơ cấu chi tiêu */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Grid: Tách riêng các Thẻ Cơ cấu chi tiêu & Cạ cứng bạn bè */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         
-        {/* Phân loại & Biểu đồ hình tròn */}
-        <div className="card p-5 space-y-4">
-          <h3 className="font-bold text-sm text-ink flex items-center justify-between">
-            <span className="flex items-center gap-2">
-              <PieIcon className="w-4 h-4 text-accent" />
-              <span>{i18n.byCategory}</span>
-            </span>
-            <span className="text-xs text-ink-3 font-medium">{timeLabel}</span>
-          </h3>
-
-          {stats.categories.length === 0 ? (
-            <p className="text-xs text-ink-3 italic py-10 text-center">
-              {i18n.noExpensePeriod(timeLabel)}
-            </p>
+        {/* CỘT TRÁI: Chỉ hiển thị thẻ cơ cấu chi tiêu cho những loại tiền có chi tiêu thực tế */}
+        <div className="space-y-6">
+          {breakdownByCurrency.length === 0 ? (
+            <div className="card p-5">
+              <h3 className="font-bold text-sm text-ink flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <PieIcon className="w-4 h-4 text-accent" />
+                  <span>{i18n.byCategory}</span>
+                </span>
+                <span className="text-xs text-ink-3 font-medium">{timeLabel}</span>
+              </h3>
+              <p className="text-xs text-ink-3 italic py-10 text-center">
+                {i18n.noExpensePeriod(timeLabel)}
+              </p>
+            </div>
           ) : (
-            <div className="space-y-4">
-              {/* Biểu đồ Donut Chart SVG */}
-              <div className="flex items-center justify-center py-2">
-                <div className="relative w-36 h-36">
-                  <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
-                    {pieSlices.map((slice, i) => {
-                      const strokeDash = `${slice.percentage} ${100 - slice.percentage}`;
-                      const strokeOffset = 100 - pieSlices.slice(0, i).reduce((acc, s) => acc + s.percentage, 0);
-                      return (
+            breakdownByCurrency.map(({ currency, categories, slices }) => (
+              <div key={currency} className="card p-5 space-y-5">
+                <h3 className="font-bold text-sm text-ink flex items-center justify-between border-b border-line/60 pb-3">
+                  <span className="flex items-center gap-2">
+                    <PieIcon className="w-4 h-4 text-accent" />
+                    <span>{currency === 'RUB' ? i18n.categoryRUB : i18n.categoryVND}</span>
+                  </span>
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-surface-2 text-ink-2 border border-line">
+                    {currency}
+                  </span>
+                </h3>
+
+                {/* Vòng tròn Donut Chart */}
+                <div className="flex items-center justify-center py-2">
+                  <div className="relative w-44 h-44">
+                    <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
+                      {slices.map((slice) => (
                         <circle
                           key={slice.key}
                           cx="18"
@@ -543,58 +696,67 @@ export function SpendingAnalyticsDashboard() {
                           fill="transparent"
                           stroke={slice.color}
                           strokeWidth="3.5"
-                          strokeDasharray={strokeDash}
-                          strokeDashoffset={strokeOffset}
+                          strokeDasharray={`${slice.percentage} ${100 - slice.percentage}`}
+                          strokeDashoffset={100 - slice.startAngle / 3.6}
                           className="transition-all duration-500"
                         />
-                      );
-                    })}
-                  </svg>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
-                    <span className="text-[10px] text-ink-3 uppercase tracking-wider font-semibold">{i18n.totalCenter}</span>
-                    <span className="text-xs font-black text-ink num mt-0.5 max-w-[5.5rem] truncate">
-                      {formatCurrency(stats.totalMySpent, preferredCurrency)}
-                    </span>
+                      ))}
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none p-1">
+                      <span className="text-[10px] text-ink-3 uppercase tracking-wider font-semibold">
+                        {i18n.totalCenter}
+                      </span>
+                      <span className="text-[11px] sm:text-xs font-black text-ink num mt-0.5 px-1 text-center whitespace-normal break-words leading-tight max-w-[7.5rem]">
+                        {formatCurrency(stats.spent[currency], currency)}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Danh sách từng danh mục */}
-              <div className="space-y-2.5">
-                {stats.categories.map((cat) => {
-                  const IconComponent = cat.icon;
-                  return (
-                    <div key={cat.key} className="space-y-1.5">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="flex items-center gap-2 font-medium text-ink">
-                          <span
-                            className="p-1.5 rounded-lg"
-                            style={{ backgroundColor: `${cat.color}20`, color: cat.color }}
-                          >
-                            <IconComponent className="w-3.5 h-3.5" />
+                {/* Danh sách danh mục thuộc loại tiền này */}
+                <div className="space-y-3">
+                  {categories.map((cat) => {
+                    const IconComponent = cat.icon;
+                    return (
+                      <div key={cat.key} className="space-y-1.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="flex items-center gap-2 font-medium text-ink">
+                            <span
+                              className="p-1.5 rounded-lg"
+                              style={{ backgroundColor: `${cat.color}20`, color: cat.color }}
+                            >
+                              <IconComponent className="w-3.5 h-3.5" />
+                            </span>
+                            {cat.name}
                           </span>
-                          {cat.name}
-                        </span>
-                        <div className="text-right">
-                          <span className="font-bold num text-ink">{formatCurrency(cat.amount, preferredCurrency)}</span>
-                          <span className="text-ink-3 ml-1.5 font-medium">({cat.percentage.toFixed(0)}%)</span>
+                          <div className="text-right">
+                            <span className="font-bold num text-ink">
+                              {formatCurrency(cat.amount, cat.currency)}
+                            </span>
+                            <span className="text-ink-3 ml-1.5 font-medium">
+                              ({cat.percentage.toFixed(0)}%)
+                            </span>
+                          </div>
+                        </div>
+                        <div className="h-1.5 bg-surface-2 rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all duration-500"
+                            style={{
+                              width: `${Math.min(cat.percentage, 100)}%`,
+                              backgroundColor: cat.color,
+                            }}
+                          />
                         </div>
                       </div>
-                      <div className="h-1.5 bg-surface-2 rounded-full overflow-hidden">
-                        <div
-                          className="h-full rounded-full transition-all duration-500"
-                          style={{ width: `${Math.min(cat.percentage, 100)}%`, backgroundColor: cat.color }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
-            </div>
+            ))
           )}
         </div>
 
-        {/* Cạ cứng & Bạn bè */}
+        {/* CỘT PHẢI: Cạ cứng & Bạn bè */}
         <div className="card p-5 space-y-5">
           <div>
             <h3 className="font-bold text-sm text-ink flex items-center justify-between mb-3">

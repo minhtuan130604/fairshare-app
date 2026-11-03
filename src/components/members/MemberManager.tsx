@@ -79,7 +79,7 @@ export function MemberManager() {
             account_number: p.account_number || '',
             accountHolder: p.account_holder || '',
             phone_number: p.phone_number || '',
-            russia_bank: p.russia_bank || 'sber',
+            russia_bank: p.russia_bank || '',
             custom_qr_url: p.custom_qr_url || '',
             russia_account_holder: p.russia_account_holder || '',
             russia_qr_url: p.russia_qr_url || '',
@@ -205,7 +205,7 @@ export function MemberManager() {
       phone_number: f.phone_number,
       russia_account_holder: f.russia_account_holder || '',
       russia_qr_url: f.russia_qr_url || '',
-      russia_bank: f.russia_bank || 'sber',
+      russia_bank: f.russia_bank || '',
       custom_qr_url: f.custom_qr_url || '',
       bankInfo: '',
     }));

@@ -4,7 +4,6 @@ import {
   ImagePlus,
   Trash2,
   AlertCircle,
-  Crop as CropIcon,
   RotateCcw,
   Utensils,
   ShoppingBag,
@@ -14,13 +13,10 @@ import {
   HelpCircle,
   Tag,
 } from 'lucide-react';
-import ReactCrop, { type Crop, type PixelCrop } from 'react-image-crop';
-import 'react-image-crop/dist/ReactCrop.css';
-
 import { Modal } from '../ui/Modal';
 import { useBillStore } from '../../store/useBillStore';
 import { formatCurrency } from '../../utils/formatters';
-import { prepareReceiptOcr, recognizeReceipt } from '../../utils/ocr';
+import { recognizeReceipt } from '../../utils/ocr';
 import { parseReceipt, type ParsedReceipt, type ScannedItem } from '../../utils/receiptParser';
 import {
   RECEIPT_LANGUAGES,
@@ -36,7 +32,7 @@ interface ScanReceiptModalProps {
   onClose: () => void;
 }
 
-type Stage = 'pick' | 'crop' | 'scanning' | 'review' | 'error';
+type Stage = 'pick' | 'scanning' | 'review' | 'error';
 
 interface DraftItem extends ScannedItem {
   key: number;
@@ -77,40 +73,6 @@ function inferCurrencyFromScan(
   return currentDefault;
 }
 
-async function getCroppedFile(image: HTMLImageElement, crop: PixelCrop): Promise<File> {
-  const canvas = document.createElement('canvas');
-  const scaleX = image.naturalWidth / image.width;
-  const scaleY = image.naturalHeight / image.height;
-
-  canvas.width = Math.floor(crop.width * scaleX);
-  canvas.height = Math.floor(crop.height * scaleY);
-
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('No 2d context');
-
-  ctx.drawImage(
-    image,
-    crop.x * scaleX,
-    crop.y * scaleY,
-    crop.width * scaleX,
-    crop.height * scaleY,
-    0,
-    0,
-    canvas.width,
-    canvas.height
-  );
-
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (!blob) {
-        reject(new Error('Canvas is empty'));
-        return;
-      }
-      resolve(new File([blob], 'cropped_receipt.jpg', { type: 'image/jpeg' }));
-    }, 'image/jpeg', 0.95);
-  });
-}
-
 export function ScanReceiptModal({ isOpen, onClose, expenseId }: ScanReceiptModalProps) {
   const { currentBill, addItem, addItemToExpense, updateCurrency, updateBillTitle, updateBillCategory } = useBillStore() as any;
   const { locale } = useLocale();
@@ -127,11 +89,6 @@ export function ScanReceiptModal({ isOpen, onClose, expenseId }: ScanReceiptModa
   const [langId, setLangId] = useState<ReceiptLangId>('auto');
   const [usedLang, setUsedLang] = useState<string | null>(null);
   const [error, setError] = useState('');
-
-  const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
-  const [crop, setCrop] = useState<Crop>();
-  const [completedCrop, setCompletedCrop] = useState<PixelCrop>();
-  const imgRef = useRef<HTMLImageElement | null>(null);
 
   const lastFileRef = useRef<File | null>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
@@ -168,69 +125,29 @@ export function ScanReceiptModal({ isOpen, onClose, expenseId }: ScanReceiptModa
     setError('');
     setLangId(preferredLanguage);
     setDetectedCurrency((currentBill?.currency as CurrencyCode) || ('VND' as CurrencyCode));
-    setCropImageSrc(null);
-    setCrop(undefined);
-    setCompletedCrop(undefined);
-
-    void prepareReceiptOcr(
-      resolveScanLangs(preferredLanguage),
-      (label, value) => setProgress({ label, value }),
-      locale,
-    );
   }, [isOpen, currentBill?.currency, locale]);
 
   useEffect(() => () => {
     if (preview) URL.revokeObjectURL(preview);
-    if (cropImageSrc) URL.revokeObjectURL(cropImageSrc);
-  }, [preview, cropImageSrc]);
+  }, [preview]);
 
   if (!currentBill) return null;
 
   const handleSelectFile = (file: File | undefined) => {
+    console.log('[ScanReceipt] Selected file:', file?.name, file?.type, file?.size);
     if (!file) return;
-    if (!file.type.startsWith('image/')) {
+
+    const fileExtension = file.name.split('.').pop()?.toLowerCase();
+    const hasSupportedExtension = ['jpg', 'jpeg', 'png', 'webp'].includes(fileExtension ?? '');
+    if (!file.type.startsWith('image/') && !hasSupportedExtension) {
       setError(t('invalidImage', locale));
       setStage('error');
       return;
     }
-
-    if (cropImageSrc) URL.revokeObjectURL(cropImageSrc);
-    const objectUrl = URL.createObjectURL(file);
-    setCropImageSrc(objectUrl);
-    setCrop(undefined);
-    setCompletedCrop(undefined);
-    setStage('crop');
+    void handleScanFile(file);
   };
 
-  const onImageLoad = () => {
-    const initialCrop: Crop = {
-      unit: '%',
-      x: 7.5,
-      y: 7.5,
-      width: 85,
-      height: 85,
-    };
-    setCrop(initialCrop);
-  };
-
-  const handleConfirmCropAndScan = async (forceLocal = false) => {
-    if (!cropImageSrc || !imgRef.current) return;
-
-    let fileToScan: File;
-    try {
-      if (completedCrop && completedCrop.width > 20 && completedCrop.height > 20) {
-        fileToScan = await getCroppedFile(imgRef.current, completedCrop);
-      } else {
-        const response = await fetch(cropImageSrc);
-        const blob = await response.blob();
-        fileToScan = new File([blob], 'receipt.jpg', { type: 'image/jpeg' });
-      }
-    } catch {
-      const response = await fetch(cropImageSrc);
-      const blob = await response.blob();
-      fileToScan = new File([blob], 'receipt.jpg', { type: 'image/jpeg' });
-    }
-
+  const handleScanFile = async (fileToScan: File) => {
     lastFileRef.current = fileToScan;
     if (preview) URL.revokeObjectURL(preview);
     setPreview(URL.createObjectURL(fileToScan));
@@ -255,8 +172,6 @@ export function ScanReceiptModal({ isOpen, onClose, expenseId }: ScanReceiptModa
               },
               language,
             ).items.length) * 10 + recognition.confidence / 10,
-        locale,
-        forceLocal,
       );
 
       setUsedLang(lang.label);
@@ -288,8 +203,13 @@ export function ScanReceiptModal({ isOpen, onClose, expenseId }: ScanReceiptModa
         setDetectedTitle(result.title);
       }
 
-      const rawText = result.text || parsed.items.map((i) => i.name).join(' ');
-      const inferredCurr = inferCurrencyFromScan(rawText, lang.id, currentBill.currency as CurrencyCode);
+      const rawText = [
+        result.text,
+        result.title,
+        ...parsed.items.map((item) => item.name),
+      ].filter(Boolean).join(' ');
+      const inferredLang = result.language || lang.id;
+      const inferredCurr = inferCurrencyFromScan(rawText, inferredLang, currentBill.currency as CurrencyCode);
       setDetectedCurrency(inferredCurr);
 
       setDrafts(
@@ -301,17 +221,9 @@ export function ScanReceiptModal({ isOpen, onClose, expenseId }: ScanReceiptModa
       );
       setDetectedTotal(parsed.detectedTotal);
       setStage('review');
-    } catch (caught) {
-      const message = caught instanceof Error ? caught.message : '';
-      if (message === 'CANVAS_NOT_SUPPORTED') {
-        setError(t('canvasNotSupported', locale));
-      } else if (/GROQ_HTTP_429|HTTP 429/i.test(message)) {
-        setError(t('geminiUnavailable', locale));
-      } else if (/TIMEOUT/i.test(message)) {
-        setError(t('geminiTimeout', locale));
-      } else {
-        setError(t('readFailed', locale));
-      }
+    } catch (error) {
+      console.error('[ScanReceipt] Error caught:', error);
+      setError(t('readFailed', locale));
       setStage('error');
     }
   };
@@ -331,7 +243,7 @@ export function ScanReceiptModal({ isOpen, onClose, expenseId }: ScanReceiptModa
 
   const confirm = () => {
     // 1. Cập nhật loại tiền tệ
-    if (detectedCurrency && detectedCurrency !== currentBill.currency && updateCurrency) {
+    if (updateCurrency && (detectedCurrency === 'RUB' || detectedCurrency !== currentBill.currency)) {
       updateCurrency(detectedCurrency);
     }
 
@@ -453,9 +365,9 @@ export function ScanReceiptModal({ isOpen, onClose, expenseId }: ScanReceiptModa
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={stage === 'crop' ? t('cropModalTitle', locale) : t('scanTitle', locale)}
+      title={t('scanTitle', locale)}
       footer={footer}
-      maxWidth={stage === 'crop' ? 'max-w-2xl' : 'max-w-xl'}
+      maxWidth="max-w-xl"
     >
       <input
         ref={cameraRef}
@@ -494,51 +406,7 @@ export function ScanReceiptModal({ isOpen, onClose, expenseId }: ScanReceiptModa
         </div>
       )}
 
-      {/* STAGE 2: Cắt ảnh */}
-      {stage === 'crop' && cropImageSrc && (
-        <div className="flex flex-col space-y-4">
-          <div className="flex items-center justify-between text-xs text-ink-3 px-1">
-            <span>Kéo các góc hoặc cạnh viền để căn chỉnh sát tờ hóa đơn</span>
-          </div>
-
-          <div className="flex justify-center max-h-[60vh] overflow-auto rounded-2xl bg-neutral-950/80 p-2 border border-line">
-            <ReactCrop
-              crop={crop}
-              onChange={(_, percentCrop) => setCrop(percentCrop)}
-              onComplete={(c) => setCompletedCrop(c)}
-              className="max-h-[55vh]"
-            >
-              <img
-                ref={imgRef}
-                src={cropImageSrc}
-                alt="Receipt for cropping"
-                onLoad={onImageLoad}
-                className="max-h-[55vh] object-contain select-none"
-              />
-            </ReactCrop>
-          </div>
-
-          <div className="flex gap-2 pt-1">
-            <button
-              type="button"
-              onClick={() => setStage('pick')}
-              className="btn btn-secondary flex-1 text-xs py-2.5 cursor-pointer"
-            >
-              {t('cancelBtn', locale)}
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleConfirmCropAndScan()}
-              className="btn btn-primary flex-1 text-xs py-2.5 cursor-pointer font-bold inline-flex items-center justify-center gap-1.5"
-            >
-              <CropIcon className="w-4 h-4" />
-              <span>{t('cropConfirmBtn', locale)}</span>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* STAGE 3: Đang quét */}
+      {/* STAGE 2: Đang quét */}
       {stage === 'scanning' && (
         <div className="space-y-4">
           {preview && (
@@ -575,7 +443,7 @@ export function ScanReceiptModal({ isOpen, onClose, expenseId }: ScanReceiptModa
           {lastFileRef.current && (
             <button
               type="button"
-              onClick={() => void handleConfirmCropAndScan(true)}
+              onClick={() => lastFileRef.current && void handleScanFile(lastFileRef.current)}
               className="btn btn-secondary w-full cursor-pointer inline-flex items-center justify-center gap-2"
             >
               <RotateCcw className="w-4 h-4" />

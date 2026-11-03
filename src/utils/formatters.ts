@@ -1,3 +1,5 @@
+
+
 import type { CurrencyCode } from '../types/bill';
 
 // Ký hiệu tiền tệ chung quốc tế (Unicode U+00A4: ¤)
@@ -28,11 +30,13 @@ export function formatCurrency(amount: number, currency: string = 'USD'): string
     return new Intl.NumberFormat('ru-RU', {
       style: 'currency',
       currency: 'RUB',
-      maximumFractionDigits: 0,
+      maximumFractionDigits: 2,
+      minimumFractionDigits: 0,
     }).format(amount);
   }
   return `${amount.toLocaleString()} ${currency}`;
 }
+
 
 // Hàm phụ bọc an toàn tránh văng lỗi Invalid time value khi dateString bị null/undefined/sai định dạng
 function parseSafeDate(dateInput: string | Date | null | undefined): Date {

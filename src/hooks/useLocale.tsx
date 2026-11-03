@@ -5,7 +5,7 @@ type TranslationParams = Record<string, string | number>;
 
 const translations = {
   vi: {
-    amountToTransfer: 'Số tiền cần chuyển:',
+    landingGoogleSync: 'Đăng nhập một chạm bằng Google để lưu trữ và đồng bộ hóa đơn trên cloud.',
 
     headerTitle: 'FairShare',
     chooseLanguage: 'Chọn ngôn ngữ',
@@ -35,7 +35,7 @@ const translations = {
     billModeSingle: 'Hóa đơn lẻ',
     billModeSingleDesc: 'Một hóa đơn duy nhất, không thuộc nhóm nào.',
     keepDefaultBadge: 'Giữ nguyên',
-    billModeTimeline: 'Nhóm hóa đơn (Timeline Trips)',
+    billModeTimeline: 'Hóa đơn nhóm',
     billModeTimelineDesc: 'Nhóm nhiều hóa đơn trong cùng một chuyến đi hoặc khoảng thời gian.',
     recommendedBadge: 'Đề xuất nhất',
     addExpenseBtn: 'Thêm chặng chi tiêu',
@@ -387,8 +387,6 @@ const translations = {
     readOnlyBillNotice: 'Hóa đơn chỉ xem. Bạn chỉ có thể báo đã chuyển khoản.',
     allPaid: 'Tất cả đã thanh toán',
     unpaidCount: 'Còn {count} người chưa chuyển',
-    cropModalTitle: 'Cắt ảnh hóa đơn',
-    cropConfirmBtn: 'Cắt & Quét hóa đơn',
   },
 
   en: {
@@ -424,7 +422,7 @@ const translations = {
     billModeSingle: 'Single Bill',
     billModeSingleDesc: 'A standalone bill, not part of any group.',
     keepDefaultBadge: 'Keep original',
-    billModeTimeline: 'Bill Groups (Timeline Trips)',
+    billModeTimeline: 'Group Expenses',
     billModeTimelineDesc: 'A group of bills from the same trip or period.',
     recommendedBadge: 'Recommended',
     addExpenseBtn: 'Add Expense',
@@ -619,6 +617,7 @@ const translations = {
     shareCollectSubtitle: 'Each friend scans their own payment code',
     memberPays: '{name} pays {amount}',
     paymentQrAlt: 'Payment QR code',
+    landingGoogleSync: 'Sign in with Google in one tap to store and sync your receipts in the cloud.',
     amountToTransfer: 'Amount to transfer:',
 
     bankLabel: 'Bank',
@@ -771,8 +770,6 @@ const translations = {
     readOnlyBillNotice: 'Read-only bill. You can only report a transfer.',
     allPaid: 'All settled up',
     unpaidCount: '{count} unsettled',
-    cropModalTitle: 'Crop Receipt',
-    cropConfirmBtn: 'Crop & Scan',
   },
 
   ru: {
@@ -808,7 +805,7 @@ const translations = {
     billModeSingle: 'Одиночный счёт',
     billModeSingleDesc: 'Один отдельный счёт, не входящий в группу.',
     keepDefaultBadge: 'По умолчанию',
-    billModeTimeline: 'Группы счетов (Timeline Trips)',
+    billModeTimeline: 'Групповой счёт',
     billModeTimelineDesc: 'Группа счетов за одну поездку или период времени.',
     recommendedBadge: 'Рекомендуется',
     addExpenseBtn: 'Добавить расход',
@@ -1000,6 +997,7 @@ const translations = {
     shareAndCollect: 'Поделиться и собрать',
     shareCollectSubtitle: 'Каждый друг сканирует свой код оплаты',
     amountToTransfer: 'Сумма к переводу:',
+    landingGoogleSync: 'Войдите через Google в одно касание, чтобы хранить и синхронизировать чеки в облаке.',
 
     memberPays: '{name} платит {amount}',
     paymentQrAlt: 'QR-код оплаты',
@@ -1155,8 +1153,6 @@ const translations = {
     readOnlyBillNotice: 'Счёт доступен только для просмотра. Можно только сообщить о переводе.',
     allPaid: 'Все переводы завершены',
     unpaidCount: 'Осталось {count} перевода',
-    cropModalTitle: 'Обрезать чек',
-    cropConfirmBtn: 'Обрезать и сканировать',
   },
 
   zh: {
@@ -1192,7 +1188,7 @@ const translations = {
     billModeSingle: '单笔账单',
     billModeSingleDesc: '单笔独立账单，不属于任何分组。',
     keepDefaultBadge: '保持原样',
-    billModeTimeline: '账单分组 (Timeline Trips)',
+    billModeTimeline: '群组账单',
     billModeTimelineDesc: '将同一行程或一段时间内的多张账单归为一组。',
     recommendedBadge: '最推荐',
     addExpenseBtn: '添加支出项',
@@ -1378,8 +1374,9 @@ const translations = {
     tabAccountSecurity: '账户与安全',
     syncedWithCloud: '已同步至云端账户',
     localDeviceOnly: '仅保存在本地设备',
-    syncButton: '同步',
     amountToTransfer: '转账金额：',
+    syncButton: '同步',
+    landingGoogleSync: '一键使用 Google 登录，将账单保存并同步到云端。',
 
     shareAndCollect: '分享与收款',
     shareCollectSubtitle: '每位朋友扫描自己的付款码',
@@ -1539,8 +1536,6 @@ const translations = {
     readOnlyBillNotice: '账单仅可查看。你只能报告转账。',
     allPaid: '已全部付清',
     unpaidCount: '还有 {count} 人未付款',
-    cropModalTitle: '裁剪收据',
-    cropConfirmBtn: '裁剪并识别',
   },
 } as const;
 

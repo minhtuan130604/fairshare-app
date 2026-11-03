@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { CheckCircle2, Pencil, Plus } from 'lucide-react';
 import { HistoryPage } from './pages/HistoryPage';
 import { GroupsPage } from './pages/GroupsPage';
 import { ProfilePage } from './pages/ProfilePage';
-import { AdminPage } from './pages/AdminPage';
-import { SpendingAnalyticsDashboard } from './components/analytics/SpendingAnalyticsDashboard';
+
+const AdminPage = lazy(() => import('./pages/AdminPage').then(({ AdminPage }) => ({ default: AdminPage })));
+const SpendingAnalyticsDashboard = lazy(() => import('./components/analytics/SpendingAnalyticsDashboard').then(({ SpendingAnalyticsDashboard }) => ({ default: SpendingAnalyticsDashboard })));
 
 import { OnboardingGuide } from './components/layout/OnboardingGuide';
 import { EmptyBillState } from './components/layout/EmptyBillState';
@@ -13,8 +14,6 @@ import { useAuthStore } from './store/useAuthStore';
 import { LandingPage } from './components/auth/LandingPage';
 import { ResetPasswordPage } from './components/auth/ResetPasswordPage';
 import { Header } from './components/layout/Header';
-import { GlobalAnnouncementModal } from './components/layout/GlobalAnnouncementModal';
-
 import { Footer } from './components/layout/Footer';
 import { SupportWidget } from './components/support/SupportWidget';
 import { BillControls } from './components/layout/BillControls';
@@ -269,7 +268,7 @@ function AppContent() {
     return (
       <>
         <div className="min-h-screen bg-canvas text-ink flex flex-col">
-          <AdminPage />
+          <Suspense fallback={<p className="p-6 text-center text-ink-2">{t('loading', locale)}</p>}><AdminPage /></Suspense>
         </div>
       </>
     );
@@ -339,7 +338,7 @@ function AppContent() {
 
         {activePage === 'analytics' && (
           <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-            <SpendingAnalyticsDashboard />
+            <Suspense fallback={<p className="py-12 text-center text-ink-2">{t('loading', locale)}</p>}><SpendingAnalyticsDashboard /></Suspense>
           </main>
         )}
 
@@ -538,10 +537,10 @@ function AppContent() {
 }
 
 export function App() {
+  //throw new Error("Test crash app");
   return (
     <>
       <AppContent />
-      <GlobalAnnouncementModal />
     </>
   );
 }

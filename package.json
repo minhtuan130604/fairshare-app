@@ -22,7 +22,6 @@
     "react-dom": "^19.2.8",
     "react-easy-crop": "^6.2.4",
     "react-image-crop": "^11.1.2",
-    "tesseract.js": "^5.1.1",
     "zustand": "^5.0.15"
   },
   "devDependencies": {

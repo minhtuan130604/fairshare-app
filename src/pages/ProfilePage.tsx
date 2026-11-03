@@ -30,11 +30,11 @@ export function ProfilePage({ onBack }: { onBack: () => void }) {
   const { locale } = useLocale();
 
   const [displayName, setDisplayName] = useState('');
-  const [bankName, setBankName] = useState('vcb');
+  const [bankName, setBankName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [accountHolder, setAccountHolder] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [russiaBank, setRussiaBank] = useState('sber');
+  const [russiaBank, setRussiaBank] = useState('');
   const [russiaAccountHolder, setRussiaAccountHolder] = useState('');
   const [russiaQrUrl, setRussiaQrUrl] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
@@ -47,7 +47,7 @@ export function ProfilePage({ onBack }: { onBack: () => void }) {
   // Trạng thái lưu thanh toán
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  const [activeMethods, setActiveMethods] = useState<PaymentMethodType[]>(['vietqr']);
+  const [activeMethods, setActiveMethods] = useState<PaymentMethodType[]>([]);
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
 
   const [newPassword, setNewPassword] = useState('');
@@ -60,11 +60,11 @@ export function ProfilePage({ onBack }: { onBack: () => void }) {
 
   useEffect(() => {
     setDisplayName(profile?.display_name || user?.user_metadata?.display_name || '');
-    setBankName(profile?.bank_name || 'vcb');
+    setBankName(profile?.bank_name || '');
     setAccountNumber(profile?.account_number || '');
     setAccountHolder(profile?.account_holder || '');
     setPhoneNumber(profile?.phone_number || '');
-    setRussiaBank(profile?.russia_bank || 'sber');
+    setRussiaBank(profile?.russia_bank || '');
     setRussiaAccountHolder(profile?.russia_account_holder || profile?.account_holder || '');
     setRussiaQrUrl(profile?.russia_qr_url || '');
     setAvatarUrl(profile?.avatar_url || '');
@@ -73,7 +73,7 @@ export function ProfilePage({ onBack }: { onBack: () => void }) {
     if (profile?.account_number || profile?.account_holder) initialMethods.push('vietqr');
     if (profile?.phone_number || profile?.russia_account_holder || profile?.russia_qr_url) initialMethods.push('sbp');
 
-    setActiveMethods(initialMethods.length > 0 ? initialMethods : ['vietqr']);
+    setActiveMethods(initialMethods);
   }, [profile, user]);
 
   useEffect(() => {
@@ -265,10 +265,10 @@ export function ProfilePage({ onBack }: { onBack: () => void }) {
     if (type === 'vietqr') {
       setAccountNumber('');
       setAccountHolder('');
-      setBankName('vcb');
+      setBankName('');
     } else if (type === 'sbp') {
       setPhoneNumber('');
-      setRussiaBank('sber');
+      setRussiaBank('');
       setRussiaAccountHolder('');
       setRussiaQrUrl('');
       if (qrInputRef.current) qrInputRef.current.value = '';

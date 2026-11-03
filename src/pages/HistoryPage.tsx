@@ -89,7 +89,7 @@ export function HistoryPage({ onBack, onOpenBill }: HistoryPageProps) {
   // 1. Lọc theo danh mục và từ khóa tìm kiếm
   const filteredBills = useMemo(() => {
     const query = normalizeText(searchQuery);
-    return bills.filter((bill) => {
+    return bills.filter((bill) => (bill.items && bill.items.length > 0) || calculateBillTotals(bill).total > 0).filter((bill) => {
       const matchType = matchesTypeFilter(bill, typeFilter);
       if (!matchType) return false;
       if (!query) return true;

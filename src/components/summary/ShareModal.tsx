@@ -150,6 +150,16 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
     }
   };
 
+  const handleShareURL = async () => {
+    const url = exportBillToURL();
+    if (!url) return;
+    if (typeof navigator.share === 'function') {
+      try { await navigator.share({ title: currentBill.title || 'FairShare', text: generateTextSummary(), url }); return; }
+      catch (error) { if (error instanceof DOMException && error.name === 'AbortError') return; }
+    }
+    await handleCopyURL();
+  };
+
   const handleExportImage = async () => {
     if (!receiptRef.current) return;
 
@@ -204,7 +214,7 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
         </button>
       </div>
 
-      <button onClick={handleCopyURL} className="btn btn-secondary w-full cursor-pointer">
+      <button onClick={handleShareURL} className="btn btn-secondary w-full cursor-pointer">
         {urlCopied ? (
           <>
             <Check className="w-4 h-4 text-accent" />

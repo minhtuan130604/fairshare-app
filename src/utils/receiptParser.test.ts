@@ -25,6 +25,19 @@ describe('receiptParser', () => {
     expect(receipt.detectedTotal).toBe(130_000);
   });
 
+  it('keeps decimal RUB line item prices without rounding', () => {
+    const receipt = parseReceiptText(
+      'Блюдо 1 79.99\nНапиток 1 69.99\nИТОГО 149.98',
+    );
+
+    expect(receipt.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'Блюдо', quantity: 1, price: 79.99 }),
+      expect.objectContaining({ name: 'Напиток', quantity: 1, price: 69.99 }),
+    ]));
+    expect(receipt.items.reduce((sum, item) => sum + item.price * item.quantity, 0)).toBeCloseTo(149.98, 10);
+    expect(receipt.detectedTotal).toBeCloseTo(149.98, 10);
+  });
+
   it('returns an empty receipt for unrelated text', () => {
     expect(parseReceiptText('Nhà hàng Xin chào\nCảm ơn quý khách').items).toEqual([]);
   });

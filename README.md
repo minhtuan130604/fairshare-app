@@ -21,7 +21,7 @@ Hệ thống kết nối Backend Supabase (Auth, Cloud Sync, Realtime), hỗ tr�
 - **Tối ưu thanh toán nợ:** Thuật toán giải quyết nợ chéo giúp tối thiểu hóa số lần chuyển tiền và tạo mã thanh toán nhanh qua **VietQR** (Việt Nam) hoặc **СБП** (Nga).
 - **Quét hóa đơn bằng AI:** Tự động nhận diện tên món, đơn giá và tổng hóa đơn qua **Google Gemini Vision API** (kèm chế độ dự phòng **OCR cục bộ Tesseract.js** khi ngoại tuyến).
 - **Đồng bộ thời gian thực:** Đăng nhập an toàn qua **Google OAuth**, lưu trữ đám mây và đồng bộ tức thì trên nhiều thiết bị với **Supabase**.
-- **Nhóm hóa đơn (Timeline Trips):** Quản lý chi phí tập trung cho các chuyến du lịch, sự kiện nhiều ngày theo dòng thời gian.
+- **Nhóm hóa đơn:** Quản lý chi phí tập trung cho các chuyến du lịch, sự kiện nhiều ngày theo dòng thời gian.
 - **Trang Quản trị & Thông báo hệ thống:** Theo dõi KPI vận hành, gửi broadcast thông báo toàn cục dạng popup modal đa ngôn ngữ tức thì.
 - **PWA & Giao diện hiện đại:** Hỗ trợ Dark/Light mode, khả năng cài đặt ứng dụng về màn hình chính điện thoại (PWA) với logo nhận diện thương hiệu sắc nét.
 

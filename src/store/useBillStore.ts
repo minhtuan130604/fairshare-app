@@ -109,7 +109,7 @@ const getCurrentUserMember = (): Member => {
     account_number: profile?.account_number || '',
     account_holder: profile?.account_holder || '',
     phone_number: profile?.phone_number || '',
-    russia_bank: profile?.russia_bank || 'sber',
+    russia_bank: profile?.russia_bank || '',
     custom_qr_url: profile?.custom_qr_url || '',
     russia_account_holder: profile?.russia_account_holder || '',
     russia_qr_url: profile?.russia_qr_url || '',
@@ -590,7 +590,7 @@ export const useBillStore = create<BillState>()(
           account_number: hasVietQr ? (profile?.account_number || '') : '',
           account_holder: hasVietQr ? (profile?.account_holder || '') : '',
           phone_number: hasSbp ? (profile?.phone_number || '') : '',
-          russia_bank: hasSbp ? (profile?.russia_bank || 'sber') : '',
+          russia_bank: hasSbp ? (profile?.russia_bank || '') : '',
           russia_account_holder: hasSbp ? (profile?.russia_account_holder || '') : '',
           russia_qr_url: hasSbp ? (profile?.russia_qr_url || '') : '',
           custom_qr_url: profile?.custom_qr_url || '',
@@ -834,7 +834,7 @@ export const useBillStore = create<BillState>()(
               account_number: profile.account_number ?? m.account_number,
               account_holder: profile.account_holder ?? m.account_holder,
               phone_number: profile.phone_number ?? m.phone_number,
-              russia_bank: profile.russia_bank ?? m.russia_bank ?? 'sber',
+              russia_bank: profile.russia_bank ?? m.russia_bank ?? '',
               russia_account_holder: profile.russia_account_holder ?? m.russia_account_holder ?? '',
               russia_qr_url: profile.russia_qr_url ?? m.russia_qr_url ?? '',
               custom_qr_url: profile.custom_qr_url ?? m.custom_qr_url,
@@ -984,7 +984,7 @@ export const useBillStore = create<BillState>()(
                 account_number: profile.account_number || '',
                 account_holder: profile.account_holder || '',
                 phone_number: profile.phone_number || '',
-                russia_bank: profile.russia_bank || 'sber',
+                russia_bank: profile.russia_bank || '',
                 russia_account_holder: profile.russia_account_holder || '',
                 russia_qr_url: profile.russia_qr_url || '',
                 custom_qr_url: profile.custom_qr_url || '',
@@ -1112,7 +1112,7 @@ export const useBillStore = create<BillState>()(
             account_number: isMe ? (profile?.account_number || gm.account_number || '') : (gm.account_number || ''),
             account_holder: isMe ? (profile?.account_holder || gm.account_holder || '') : (gm.account_holder || ''),
             phone_number: isMe ? (profile?.phone_number || gm.phone_number || '') : (gm.phone_number || ''),
-            russia_bank: isMe ? (profile?.russia_bank || gm.russia_bank || 'sber') : (gm.russia_bank || 'sber'),
+            russia_bank: isMe ? (profile?.russia_bank || gm.russia_bank || '') : (gm.russia_bank || ''),
             custom_qr_url: isMe ? (profile?.custom_qr_url || gm.custom_qr_url || '') : (gm.custom_qr_url || ''),
             russia_account_holder: isMe ? (profile?.russia_account_holder || '') : (gm.russia_account_holder || ''),
             russia_qr_url: isMe ? (profile?.russia_qr_url || '') : (gm.russia_qr_url || ''),
@@ -1444,6 +1444,7 @@ export const useBillStore = create<BillState>()(
         const targetBill = billToSave || get().currentBill;
         const user = useAuthStore.getState().user;
         if (!user || !supabase || !targetBill || targetBill.isSharedBill) return;
+        if ((!targetBill.items || targetBill.items.length === 0) && (!targetBill.members || targetBill.members.length <= 1)) return;
 
         if (cloudSyncTimeout) clearTimeout(cloudSyncTimeout);
 

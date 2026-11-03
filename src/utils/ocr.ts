@@ -1,19 +1,6 @@
-import Tesseract from 'tesseract.js';
 import { RECEIPT_LANGUAGES, type ReceiptLang, type ReceiptLangId } from './ocrLanguages';
 import type { OcrWord, ScannedItem } from './receiptParser';
 import type { BillCategory } from '../types/bill';
-
-interface TesseractWordData {
-  text: string;
-  confidence: number;
-  bbox: { x0: number; y0: number; x1: number; y1: number };
-}
-
-interface RecognizeData {
-  text: string;
-  confidence: number;
-  words?: TesseractWordData[];
-}
 
 interface GroqReceiptPayload {
   language?: unknown;
@@ -23,7 +10,7 @@ interface GroqReceiptPayload {
   detectedTotal?: unknown;
 }
 
-export type OcrProvider = 'gemini' | 'tesseract' | 'groq';
+export type OcrProvider = 'groq';
 
 export interface RecognizeResult {
   text: string;
@@ -33,6 +20,7 @@ export interface RecognizeResult {
   detectedTotal?: number | null;
   title?: string;
   category?: BillCategory;
+  language?: ReceiptLangId;
   provider?: OcrProvider;
 }
 
@@ -124,10 +112,6 @@ function waitMs(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function isGroqRateLimitError(error: unknown): boolean {
-  return error instanceof Error && /GROQ_HTTP_429|HTTP 429/i.test(error.message);
-}
-
 // ---------------------------------------------------------------------------
 // 2. Groq Vision: bóc tách món ăn, nhận diện Category và Tiêu đề
 // ---------------------------------------------------------------------------
@@ -152,6 +136,7 @@ Bạn là hệ thống đọc hóa đơn đa năng. Đọc ảnh hóa đơn và 
 }
 
 Quy tắc bắt buộc:
+0. Mỗi dòng món ăn (line items) phải giữ nguyên đơn giá và thành tiền thập phân chính xác, không được làm tròn từng món (ví dụ: 79.99, 69.99). Tuyệt đối KHÔNG làm tròn hoặc cắt bỏ phần thập phân của bất kỳ số tiền nào. Chép chính xác đơn giá và tổng tiền như trên hóa đơn; ví dụ 29.99 phải trả về 29.99, 54.99 phải trả về 54.99. Dùng dấu chấm làm dấu thập phân trong JSON. Phân biệt dấu phân cách hàng nghìn và dấu thập phân theo định dạng/ngữ cảnh hóa đơn (bao gồm RUB).
 1. language chỉ là "vi", "en", "ru" hoặc "zh", tùy ngôn ngữ trên hóa đơn.
 2. title là tên thương hiệu/nhà hàng/siêu thị/quán in trên đầu hóa đơn (Ví dụ: "Haidilao Hotpot", "WinMart", "Lotte Cinema"). Nếu không rõ, để trống "".
 3. category bắt buộc chọn đúng 1 trong các giá trị sau dựa vào ngữ cảnh:
@@ -161,12 +146,14 @@ Quy tắc bắt buộc:
    - "entertainment": Vé xem phim, karaoke, bida, bowling, khu vui chơi, quán bar/pub.
    - "travel": Khách sạn, homestay, resort, tour du lịch, vé cáp treo/tham quan.
    - "other": Hóa đơn chi phí khác.
-4. name là tên hàng hóa/món ăn. Bỏ số thứ tự và các đơn vị tính thừa (kg, đĩa, bát, cái, lon, chai, шт).
-5. quantity là số lượng. Giữ số thập phân nếu có (ví dụ 1.5 hoặc 0.8). Nếu không có, đặt là 1.
-6. price là đơn vị giá (đơn giá của 1 cái), KHÔNG lấy tổng tiền dòng nếu có đơn giá riêng.
-7. detectedTotal là tổng số tiền thanh toán cuối cùng của hóa đơn. Nếu không đọc được, trả về null.
-8. Bỏ qua các dòng tạm tính, thuế VAT/НДС, tiền khách đưa, tiền thừa.
-9. Dữ liệu số (quantity, price, detectedTotal) phải là kiểu number trong JSON, không kèm chữ hay ký hiệu tiền tệ.
+4. name là tên hàng hóa/món ăn. Giữ nguyên thông tin định lượng/đơn vị nếu hóa đơn có khối lượng hoặc thể tích (kg, g, l, ml), đặt trong tên món, ví dụ "Thịt ba chỉ (0.85 kg)" hoặc "Nước giặt 1.5L". Chỉ bỏ số thứ tự; không xóa định lượng có ý nghĩa.
+5. quantity là số lượng dòng hàng. Giữ số thập phân nếu có (ví dụ 1.5 hoặc 0.8). Nếu không có, đặt là 1.
+6. price là đơn giá của một đơn vị/số lượng ghi trên dòng, KHÔNG lấy tổng tiền dòng nếu có đơn giá riêng.
+7. detectedTotal là tổng số tiền thanh toán cuối cùng thực tế của hóa đơn, sau khi cộng thuế/phí và trừ chiết khấu. Nếu không đọc được, trả về null.
+8. Kiểm tra kỹ mọi dòng VAT/НДС/tax, phí phục vụ/service charge, phụ phí và discount/скидка. Không đưa các dòng này vào items. Đối chiếu subtotal + thuế + phí - chiết khấu với detectedTotal; nếu không có trường riêng để trả về, hãy phản ánh đúng các khoản này trong detectedTotal và không làm lệch tổng so với các món lẻ.
+9. Bỏ qua tiền khách đưa, tiền thừa, phương thức thanh toán, mã giao dịch và các dòng không phải hàng hóa/dịch vụ.
+10. Dữ liệu số (quantity, price, detectedTotal) phải là kiểu number trong JSON, không kèm chữ hay ký hiệu tiền tệ.
+11. Chỉ trả về JSON thuần theo cấu trúc trên, không bọc trong markdown code fence, không thêm lời giải thích hoặc văn bản bên ngoài JSON.
 `.trim();
 
   let response: Response | null = null;
@@ -226,6 +213,7 @@ Quy tắc bắt buộc:
           }),
         });
       } else {
+        console.error('[OCR] Missing API key or configuration');
         throw new Error('MISSING_GROQ_API_KEY');
       }
     } catch (error) {
@@ -317,29 +305,28 @@ Quy tắc bắt buộc:
     const item = rawItem as Record<string, unknown>;
     const cleanName = typeof item.name === 'string' ? item.name.trim() : '';
     const rawQty = item.quantity == null ? 1 : Number(item.quantity);
-    const rawUnitPrice = Number(item.price);
+    const unitPrice = parseFloat(String(item.price));
 
     if (
       !cleanName ||
       !Number.isFinite(rawQty) ||
       rawQty <= 0 ||
-      !Number.isFinite(rawUnitPrice) ||
-      rawUnitPrice <= 0
+      !Number.isFinite(unitPrice) ||
+      unitPrice <= 0
     ) {
       continue;
     }
 
-    const unitPrice = Math.round(rawUnitPrice * 100) / 100;
     scannedItems.push({
       name: cleanName,
       quantity: rawQty,
-      price: unitPrice,
+      price: parseFloat(String(unitPrice)),
       confidence: 0,
     });
     syntheticLines.push(`${cleanName}   ${rawQty} x ${unitPrice}`);
   }
 
-  const totalCandidate = data.detectedTotal == null ? NaN : Number(data.detectedTotal);
+  const totalCandidate = data.detectedTotal == null ? NaN : parseFloat(String(data.detectedTotal));
   const detectedTotal = Number.isFinite(totalCandidate) && totalCandidate > 0
     ? totalCandidate
     : null;
@@ -365,6 +352,7 @@ Quy tắc bắt buộc:
       detectedTotal,
       title: detectedTitle,
       category: detectedCategory,
+      language: detectedLangId,
       provider: 'groq',
     },
     lang: matchedLang,
@@ -372,203 +360,13 @@ Quy tắc bắt buộc:
 }
 
 // ---------------------------------------------------------------------------
-// 3. Tesseract OCR cục bộ và cache worker
+// 3. AI Vision receipt recognition
 // ---------------------------------------------------------------------------
 
-const workerPool = new Map<string, Promise<Tesseract.Worker>>();
-
-function getWorker(
-  langs: string,
-  logger?: (message: Tesseract.LoggerMessage) => void,
-): Promise<Tesseract.Worker> {
-  const cached = workerPool.get(langs);
-  if (cached) return cached;
-
-  const workerPromise = (async () => {
-    const worker = await Tesseract.createWorker(langs, Tesseract.OEM.LSTM_ONLY, {
-      logger: logger ?? (() => {}),
-    });
-
-    await worker.setParameters({
-      tessedit_pageseg_mode: Tesseract.PSM.SINGLE_BLOCK,
-      preserve_interword_spaces: '1',
-    });
-
-    return worker;
-  })();
-
-  workerPool.set(langs, workerPromise);
-
-  void workerPromise.catch(() => {
-    if (workerPool.get(langs) === workerPromise) workerPool.delete(langs);
-  });
-
-  return workerPromise;
-}
-
-export async function prepareReceiptOcr(
-  langs: ReceiptLang[],
-  onProgress?: (label: string, value: number) => void,
-  _locale?: string,
-): Promise<void> {
-  const online = typeof navigator !== 'undefined' && navigator.onLine;
-  if (online && (getGroqApiKey() || import.meta.env.VITE_SUPABASE_URL)) {
-    onProgress?.('', 0);
-    return;
-  }
-
-  const firstLang = langs[0];
-  if (!firstLang) return;
-
-  try {
-    await getWorker(firstLang.tesseractLangs, (message) => {
-      if (message.status.includes('loading') || message.status.includes('initializing')) {
-        onProgress?.(`Đang chuẩn bị dữ liệu ${firstLang.label}...`, 0.1);
-      }
-    });
-  } catch (error) {
-    console.warn('[OCR] Không thể tải trước Tesseract worker:', error);
-  }
-}
-
-export async function preprocessImage(
-  file: File,
-  maxWidth = 1200,
-): Promise<HTMLCanvasElement> {
-  const bitmap = await createImageBitmap(file);
-  try {
-    const scale = Math.min(1, maxWidth / bitmap.width);
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-
-    const context = canvas.getContext('2d', { willReadFrequently: true });
-    if (!context) throw new Error('CANVAS_NOT_SUPPORTED');
-
-    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    return canvas;
-  } finally {
-    bitmap.close();
-  }
-}
-
-export async function recognizeReceiptWithLang(
-  canvas: HTMLCanvasElement,
-  lang: ReceiptLang,
-  onProgress: (label: string, progress: number) => void,
-  _locale?: string,
-  forceLocal?: boolean,
-): Promise<RecognizeResult> {
-  const online = typeof navigator !== 'undefined' && navigator.onLine;
-
-  if (!forceLocal && online && (getGroqApiKey() || import.meta.env.VITE_SUPABASE_URL)) {
-    try {
-      const groqOutput = await callGroqVision(canvas, onProgress);
-      return groqOutput.result;
-    } catch (error) {
-      console.error('[OCR] Groq thất bại; đang chuyển sang Tesseract:', error);
-      if (isGroqRateLimitError(error)) throw error;
-    }
-  }
-
-  console.info('[OCR] Nhà cung cấp đang dùng: Tesseract OCR cục bộ.');
-  onProgress('Đang chuẩn bị nhận diện nội dung...', 0.05);
-
-  const worker = await getWorker(lang.tesseractLangs, (message) => {
-    if (message.status === 'recognizing text') {
-      onProgress('Đang đọc nội dung hóa đơn...', 0.2 + message.progress * 0.75);
-    } else if (message.status.includes('loading') || message.status.includes('initializing')) {
-      onProgress(`Đang tải dữ liệu ${lang.label} (chỉ lần đầu)...`, 0.1);
-    }
-  });
-
-  const recognition = (await worker.recognize(
-    canvas,
-    {},
-    {
-      text: true,
-      blocks: true,
-      tsv: false,
-      hocr: false,
-    },
-  )) as { data: RecognizeData };
-
-  const data = recognition.data;
-  const words: OcrWord[] = (data.words ?? [])
-    .filter((word) => word.text.trim().length > 0)
-    .map((word) => ({ text: word.text, bbox: word.bbox }));
-
-  return {
-    text: data.text,
-    words,
-    confidence: data.confidence,
-    category: 'dining',
-    provider: 'tesseract',
-  };
-}
-
-export async function recognizeReceipt(
-  file: File,
-  langs: ReceiptLang[],
-  onProgress: (label: string, progress: number) => void,
-  score?: (result: RecognizeResult, lang: ReceiptLang) => number,
-  locale?: string,
-  forceLocal?: boolean,
-): Promise<{ result: RecognizeResult; lang: ReceiptLang }> {
-  const online = typeof navigator !== 'undefined' && navigator.onLine;
-  const hasGroqOrEdge = Boolean(getGroqApiKey() || import.meta.env.VITE_SUPABASE_URL);
-
-  if (!forceLocal && online && hasGroqOrEdge) {
-    try {
-      return await callGroqVision(file, onProgress);
-    } catch (error) {
-      console.error('[OCR] Groq thất bại; chuyển sang Tesseract:', error);
-      if (isGroqRateLimitError(error)) throw error;
-    }
-  }
-
-  onProgress('Đang chuẩn bị ảnh...', 0.05);
-  const canvas = await preprocessImage(file, 1600);
+export async function recognizeReceipt(file: File, langs: ReceiptLang[], onProgress: (label: string, progress: number) => void, score?: (result: RecognizeResult, lang: ReceiptLang) => number): Promise<{ result: RecognizeResult; lang: ReceiptLang }> {
   const scanLangs = langs.length > 0 ? langs : [RECEIPT_LANGUAGES.vi];
-
-  if (scanLangs.length > 1) {
-    const combinedTesseractLangs = Array.from(
-      new Set(scanLangs.flatMap((language) => language.tesseractLangs.split('+'))),
-    ).join('+');
-
-    const multiLangConfig: ReceiptLang = {
-      id: 'auto',
-      label: 'Tự động',
-      tesseractLangs: combinedTesseractLangs,
-      totalWords: scanLangs.flatMap((language) => language.totalWords),
-      subtotalWords: scanLangs.flatMap((language) => language.subtotalWords),
-      skipWords: scanLangs.flatMap((language) => language.skipWords),
-    };
-
-    const result = await recognizeReceiptWithLang(
-      canvas,
-      multiLangConfig,
-      onProgress,
-      locale,
-      true,
-    );
-
-    let bestLang = scanLangs[0];
-    let bestScore = Number.NEGATIVE_INFINITY;
-    if (score) {
-      for (const language of scanLangs) {
-        const candidateScore = score(result, language);
-        if (candidateScore > bestScore) {
-          bestScore = candidateScore;
-          bestLang = language;
-        }
-      }
-    }
-
-    return { result, lang: bestLang };
-  }
-
-  const singleLang = scanLangs[0];
-  const result = await recognizeReceiptWithLang(canvas, singleLang, onProgress, locale, true);
-  return { result, lang: singleLang };
+  const result = await callGroqVision(file, onProgress);
+  let bestLang = scanLangs[0];
+  if (score && scanLangs.length > 1) { let bestScore = Number.NEGATIVE_INFINITY; for (const language of scanLangs) { const candidateScore = score(result.result, language); if (candidateScore > bestScore) { bestScore = candidateScore; bestLang = language; } } }
+  return { result: result.result, lang: bestLang };
 }

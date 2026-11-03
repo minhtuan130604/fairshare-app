@@ -99,7 +99,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
                 ? data.russia_account_holder
                 : localProfile?.russia_account_holder || '',
             phone_number: data.phone_number || localProfile?.phone_number || '',
-            russia_bank: data.russia_bank || localProfile?.russia_bank || 'sber',
+            russia_bank: data.russia_bank || localProfile?.russia_bank || '',
             custom_qr_url: data.custom_qr_url || localProfile?.custom_qr_url || '',
             russia_qr_url: data.russia_qr_url || localProfile?.russia_qr_url || '',
             avatar_url: data.avatar_url || localProfile?.avatar_url || '',
@@ -129,7 +129,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
           account_number: '',
           account_holder: '',
           phone_number: '',
-          russia_bank: 'sber',
+          russia_bank: '',
           custom_qr_url: '',
           russia_account_holder: '',
           russia_qr_url: '',

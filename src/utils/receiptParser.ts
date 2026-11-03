@@ -1,3 +1,4 @@
+
 import type { ReceiptLang } from './ocrLanguages';
 
 export interface ScannedItem {
@@ -14,7 +15,7 @@ export interface ParsedReceipt {
   score: number;
 }
 
-/** Một từ có tọa độ từ Tesseract */
+/** Một từ có tọa độ từ AI Vision */
 export interface OcrWord {
   text: string;
   bbox: { x0: number; y0: number; x1: number; y1: number };
@@ -68,23 +69,23 @@ export function parseAmount(token: string): number {
     const lastDot = cleaned.lastIndexOf('.');
     const lastComma = cleaned.lastIndexOf(',');
     if (lastDot > lastComma) {
-      return Number(cleaned.replace(/,/g, ''));
+      return parseFloat(cleaned.replace(/,/g, ''));
     }
-    return Number(cleaned.replace(/\./g, '').replace(',', '.'));
+    return parseFloat(cleaned.replace(/\./g, '').replace(',', '.'));
   }
 
   const lastSep = Math.max(cleaned.lastIndexOf('.'), cleaned.lastIndexOf(','));
-  if (lastSep === -1) return Number(cleaned);
+  if (lastSep === -1) return parseFloat(cleaned);
 
   const decimals = cleaned.length - lastSep - 1;
   const hasMultipleSeps = (cleaned.match(/[.,]/g) ?? []).length > 1;
 
   // 1-2 chữ số sau dấu cuối và chỉ có một dấu => số thập phân (12.50, 3,99)
   if (!hasMultipleSeps && decimals > 0 && decimals <= 2) {
-    return Number(cleaned.replace(',', '.'));
+    return parseFloat(cleaned.replace(',', '.'));
   }
   // 3 chữ số sau dấu hoặc có nhiều dấu phân cách => phân cách hàng nghìn (350.000, 1,250,000)
-  return Number(cleaned.replace(/[.,]/g, ''));
+  return parseFloat(cleaned.replace(/[.,]/g, ''));
 }
 
 export function isPriceLike(token: string): boolean {
@@ -286,7 +287,7 @@ function parseLineToItem(rawLine: string): LineParse | null {
     const quantity = Number(qtyTimesUnitAndTotal[2]);
     const unitPrice = parseAmount(qtyTimesUnitAndTotal[3]);
     if (name.length >= 2 && /\p{L}/u.test(name) && quantity >= 1 && isReasonablePrice(unitPrice)) {
-      return { name, quantity, price: Math.round(unitPrice * 100) / 100 };
+      return { name, quantity, price: parseFloat(String(unitPrice)) };
     }
   }
 
@@ -297,7 +298,7 @@ function parseLineToItem(rawLine: string): LineParse | null {
     const unitPrice = parseAmount(russianFormatMatch[2]);
     const quantity = Number(russianFormatMatch[3]);
     if (name.length >= 2 && /\p{L}/u.test(name) && isReasonablePrice(unitPrice) && quantity >= 1) {
-      return { name, quantity, price: Math.round(unitPrice * 100) / 100 };
+      return { name, quantity, price: parseFloat(String(unitPrice)) };
     }
   }
 
@@ -312,10 +313,10 @@ function parseLineToItem(rawLine: string): LineParse | null {
 
     if (name.length >= 2 && /\p{L}/u.test(name)) {
       if (isPriceLike(rawA) && !isPriceLike(rawB) && Number.isInteger(numB) && numB >= 1 && numB <= 99) {
-        return { name, quantity: numB, price: Math.round(numA * 100) / 100 };
+        return { name, quantity: numB, price: parseFloat(String(numA)) };
       }
       if (Number.isInteger(numA) && numA >= 1 && numA <= 99 && isReasonablePrice(numB)) {
-        return { name, quantity: numA, price: Math.round(numB * 100) / 100 };
+        return { name, quantity: numA, price: numB };
       }
     }
   }
@@ -404,7 +405,7 @@ function parseLineToItem(rawLine: string): LineParse | null {
 
   return {
     name,
-    price: Math.round(price * 100) / 100,
+    price,
     quantity,
   };
 }
@@ -514,7 +515,6 @@ export function parseReceiptText(text: string): ParsedReceipt {
   const fakeLang: ReceiptLang = {
     id: 'vi',
     label: 'Tiếng Việt',
-    tesseractLangs: 'vie+eng',
     totalWords: [
       'tổng cộng', 'tong cong', 'tổng tiền', 'tong tien', 'total',
       'phải trả', 'phai tra', 'thành tiền', 'thanh tien', 'tổng thanh toán', 'итого', 'итог',
