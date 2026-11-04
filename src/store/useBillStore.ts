@@ -141,36 +141,26 @@ const withBillInHistory = (state: Pick<BillState, 'history'>, bill: BillSession)
 
 const BASE64_DATA_URL_RE = /^data:image\/[^;]+;base64,/i;
 
-type PersistableValue = unknown;
-
-function stripBase64Images<T extends PersistableValue>(value: T): T {
-  if (typeof value === 'string') {
-    return (BASE64_DATA_URL_RE.test(value) ? '' : value) as T;
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => stripBase64Images(item)) as T;
-  }
+function stripBase64Images<T>(value: T): T {
+  if (typeof value === 'string') return (BASE64_DATA_URL_RE.test(value) ? '' : value) as T;
+  if (Array.isArray(value)) return value.map((item) => stripBase64Images(item)) as T;
   if (value && typeof value === 'object') {
-    const result: Record<string, unknown> = {};
-    Object.entries(value as Record<string, unknown>).forEach(([key, item]) => {
-      result[key] = stripBase64Images(item);
-    });
-    return result as T;
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, stripBase64Images(item)]),
+    ) as T;
   }
   return value;
 }
 
 function sanitizeBillForLocalStorage(bill: BillSession | null): BillSession | null {
+  // Chỉ lọc ở persistence/UI cục bộ; không dùng kết quả này để ghi lên DB.
   return bill ? stripBase64Images(bill) : null;
 }
 
 const sanitizeGroups = (groups: MemberGroup[]): MemberGroup[] =>
   groups.map((group) => ({
     ...group,
-    members: (group.members || []).map((member) => ({
-      ...member,
-      avatar_url: member.avatar_url?.startsWith('data:image') ? '' : member.avatar_url,
-    })),
+    members: (group.members || []).map((member) => ({ ...member })),
   }));
 
 const safeLocalStorage = createJSONStorage(() => {
@@ -205,12 +195,7 @@ let cloudSyncTimeout: ReturnType<typeof setTimeout> | null = null;
 let lastLocalMutationTime = 0; // Khóa chống dội ngược từ Realtime Supabase
 const persistedBillFingerprints = new Map<string, string>();
 const GROUPS_FETCH_COOLDOWN_MS = 30 * 1000;
-const GROUPS_SYNC_COOLDOWN_MS = 30 * 1000;
 const FETCH_BILLS_COOLDOWN_MS = 30 * 1000;
-let lastGroupsSyncTime = 0;
-let pendingGroupsSync: { userId: string; groups: MemberGroup[] } | null = null;
-let pendingGroupsSyncTimer: ReturnType<typeof setTimeout> | null = null;
-const lastSyncedGroupsByUser = new Map<string, string>();
 let lastFetchGroupsTime = 0;
 let isFetchingGroupsInProgress = false;
 let lastFetchBillsTime = 0;
@@ -512,46 +497,9 @@ export const useBillStore = create<BillState>()(
         }
       },
 
-      syncGroupsToCloud: async (groupsToSync?: MemberGroup[], force = false) => {
-        const user = useAuthStore.getState().user;
-        if (!user || !supabase) return;
-        const groups = sanitizeGroups(groupsToSync ?? get().savedGroups);
-        const serializedGroups = JSON.stringify(groups);
-        if (lastSyncedGroupsByUser.get(user.id) === serializedGroups) return;
-
-        const remainingCooldown = GROUPS_SYNC_COOLDOWN_MS - (Date.now() - lastGroupsSyncTime);
-        if (!force && remainingCooldown > 0) {
-          pendingGroupsSync = { userId: user.id, groups };
-          if (!pendingGroupsSyncTimer) {
-            pendingGroupsSyncTimer = setTimeout(() => {
-              pendingGroupsSyncTimer = null;
-              const pending = pendingGroupsSync;
-              pendingGroupsSync = null;
-              if (pending && useAuthStore.getState().user?.id === pending.userId) {
-                void get().syncGroupsToCloud(pending.groups);
-              }
-            }, remainingCooldown);
-          }
-          return;
-        }
-
-        if (pendingGroupsSyncTimer) {
-          clearTimeout(pendingGroupsSyncTimer);
-          pendingGroupsSyncTimer = null;
-        }
-        pendingGroupsSync = null;
-        lastGroupsSyncTime = Date.now();
-        try {
-          const { error } = await supabase
-            .from('profiles')
-            .update({ member_groups: groups })
-            .eq('id', user.id);
-          if (error) throw error;
-          lastSyncedGroupsByUser.set(user.id, serializedGroups);
-        } catch (err) {
-          console.error('Lỗi lưu nhóm lên cloud:', err);
-        }
-      },
+      // Nhóm được lưu trong state/localStorage. Không ghi ngược member_groups vào
+      // profiles tự động; profiles chỉ được ghi bởi thao tác Lưu hồ sơ.
+      syncGroupsToCloud: async () => {},
 
       deleteSharedBill: async (shareId: string) => {
         if (!supabase || !shareId) return;

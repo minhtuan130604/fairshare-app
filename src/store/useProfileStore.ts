@@ -32,6 +32,17 @@ const LOCAL_PROFILE_KEY = 'fairshare_local_profile';
 const PROFILE_FETCH_COOLDOWN_MS = 60 * 1000;
 let lastFetchProfileTime = 0;
 let isFetchingProfile = false;
+let lastLocalMutationTime = 0;
+
+const stripBase64ProfileImages = (profile: UserProfile): UserProfile => ({
+  ...profile,
+  avatar_url: profile.avatar_url?.startsWith('data:image') ? '' : profile.avatar_url,
+  custom_qr_url: profile.custom_qr_url?.startsWith('data:image') ? '' : profile.custom_qr_url,
+  russia_qr_url: profile.russia_qr_url?.startsWith('data:image') ? '' : profile.russia_qr_url,
+});
+export const getLastLocalProfileMutationTime = (): number => lastLocalMutationTime;
+
+
 
 const getInitialProfile = (): UserProfile | null => {
   if (typeof window === 'undefined') return null;
@@ -69,7 +80,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
         try {
           const parsed = JSON.parse(localRaw) as UserProfile;
           if (authUser?.id && parsed.id === authUser.id) {
-            localProfile = parsed;
+            localProfile = stripBase64ProfileImages(parsed);
             set({ profile: localProfile });
           } else {
             localStorage.removeItem(LOCAL_PROFILE_KEY);
@@ -95,7 +106,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
 
         if (data) {
           // TUYỆT ĐỐI KHÔNG FALLBACK russia_account_holder sang account_holder (VietQR)
-          const profile: UserProfile = {
+          const profile: UserProfile = stripBase64ProfileImages({
             id: data.id,
             display_name: data.display_name || localProfile?.display_name || '',
             bank_name: data.bank_name || localProfile?.bank_name || '',
@@ -111,7 +122,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
             russia_qr_url: data.russia_qr_url || localProfile?.russia_qr_url || '',
             avatar_url: data.avatar_url || localProfile?.avatar_url || '',
             updated_at: data.updated_at,
-          };
+          });
 
           set({ profile, isLoading: false });
           localStorage.setItem(LOCAL_PROFILE_KEY, JSON.stringify(profile));
@@ -178,6 +189,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
         return true;
       }
 
+      lastLocalMutationTime = Date.now();
       const updatedProfile: UserProfile = {
         id: targetId,
         ...data,
