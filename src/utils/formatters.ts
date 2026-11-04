@@ -10,24 +10,26 @@ export const CURRENCIES: Record<string, { code: CurrencyCode; symbol: string; na
   RUB: { code: 'RUB' as CurrencyCode, symbol: GENERIC_CURRENCY_SYMBOL, name: 'RUB' },
 };
 
-export function formatCurrency(amount: number, currency: string = 'USD'): string {
+export function formatCurrency(amount: number, currency: string = 'USD', locale?: string): string {
+  const localeTag = locale === 'en' ? 'en-US' : locale === 'ru' ? 'ru-RU' : locale === 'zh' ? 'zh-CN' : 'vi-VN';
   const code = (currency || 'USD').toUpperCase();
+
   if (code === 'USD' || code === '$') {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat(localeTag, {
       style: 'currency',
       currency: 'USD',
       minimumFractionDigits: amount % 1 === 0 ? 0 : 2,
     }).format(amount);
   }
   if (code === 'VND' || code === 'VNĐ' || code === 'Đ') {
-    return new Intl.NumberFormat('vi-VN', {
+    return new Intl.NumberFormat(localeTag, {
       style: 'currency',
       currency: 'VND',
       maximumFractionDigits: 0,
     }).format(amount);
   }
   if (code === 'RUB' || code === '₽') {
-    return new Intl.NumberFormat('ru-RU', {
+    return new Intl.NumberFormat(localeTag, {
       style: 'currency',
       currency: 'RUB',
       maximumFractionDigits: 2,
