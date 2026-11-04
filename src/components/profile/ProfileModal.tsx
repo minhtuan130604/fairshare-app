@@ -5,6 +5,7 @@ import { useProfileStore } from '../../store/useProfileStore';
 import { useAuthStore } from '../../store/useAuthStore';
 import { RUSSIA_BANKS } from '../../constants/banks';
 import { useLocale, t } from '../../hooks/useLocale';
+import { uploadProfileImage } from '../../lib/storage';
 
 interface ProfileModalProps {
   isOpen: boolean;
@@ -59,22 +60,16 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
 
   if (!isOpen) return null;
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 2 * 1024 * 1024) {
-      alert('Kích thước ảnh quá lớn. Vui lòng chọn ảnh dưới 2MB.');
-      return;
+    try {
+      const publicUrl = await uploadProfileImage(file, 'russia_qr');
+      if (publicUrl) setRussiaQrUrl(publicUrl);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Không thể tải ảnh lên.');
     }
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      if (typeof event.target?.result === 'string') {
-        setRussiaQrUrl(event.target.result);
-      }
-    };
-    reader.readAsDataURL(file);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

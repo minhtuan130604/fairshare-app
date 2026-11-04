@@ -25,6 +25,7 @@ import { useLocale, t } from '../../hooks/useLocale';
 import { supabase } from '../../lib/supabase';
 import type { MemberGroup, Member } from '../../types/bill';
 import { RUSSIA_BANKS } from '../../constants/banks';
+import { uploadProfileImage } from '../../lib/storage';
 
 const VN_BANKS = [
   { code: 'MBBANK', name: 'MB Bank (Quân Đội)' },
@@ -59,45 +60,6 @@ export interface FriendProfile {
   russia_qr_url?: string;
   friendship_id: string;
 }
-
-const compressImage = (file: File, maxDim = 500, quality = 0.75): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        let width = img.width;
-        let height = img.height;
-
-        if (width > maxDim || height > maxDim) {
-          if (width > height) {
-            height = Math.round((height * maxDim) / width);
-            width = maxDim;
-          } else {
-            width = Math.round((width * maxDim) / height);
-            height = maxDim;
-          }
-        }
-
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          resolve(e.target?.result as string);
-          return;
-        }
-
-        ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', quality));
-      };
-      img.onerror = reject;
-      img.src = e.target?.result as string;
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-};
 
 export function UserDashboardModal({ isOpen, onClose, defaultTab = 'bills' }: UserDashboardModalProps) {
   const [tab, setTab] = useState<'bills' | 'payment' | 'account' | 'friends'>(defaultTab);
@@ -372,7 +334,8 @@ export function UserDashboardModal({ isOpen, onClose, defaultTab = 'bills' }: Us
     if (!file) return;
 
     try {
-      const base64 = await compressImage(file, 400, 0.8);
+      const publicUrl = await uploadProfileImage(file, 'avatar');
+      if (!publicUrl) return;
       await saveProfile({
         display_name: displayName || profile?.display_name || 'Tôi',
         bank_name: bankName || profile?.bank_name || '',
@@ -383,7 +346,7 @@ export function UserDashboardModal({ isOpen, onClose, defaultTab = 'bills' }: Us
         russia_bank: russiaBank || profile?.russia_bank || '',
         custom_qr_url: '',
         russia_qr_url: russiaQrUrl || profile?.russia_qr_url || '',
-        avatar_url: base64,
+        avatar_url: publicUrl,
       });
       syncProfileToMember();
       setAccountMessage(t('avatarSuccess', locale));
@@ -399,8 +362,9 @@ export function UserDashboardModal({ isOpen, onClose, defaultTab = 'bills' }: Us
     if (!file) return;
 
     try {
-      const compressedQr = await compressImage(file, 600, 0.75);
-      setRussiaQrUrl(compressedQr);
+      const publicUrl = await uploadProfileImage(file, 'russia_qr');
+      if (!publicUrl) return;
+      setRussiaQrUrl(publicUrl);
       await saveProfile({
         display_name: displayName || profile?.display_name || 'Tôi',
         bank_name: bankName || profile?.bank_name || '',

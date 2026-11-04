@@ -17,6 +17,7 @@ import { useBillStore } from '../store/useBillStore';
 import { useProfileStore } from '../store/useProfileStore';
 import { useLocale, t } from '../hooks/useLocale';
 import { supabase } from '../lib/supabase';
+import { uploadProfileImage } from '../lib/storage';
 import { POPULAR_BANKS } from '../components/profile/ProfileModal';
 import { RUSSIA_BANKS } from '../constants/banks';
 
@@ -225,13 +226,12 @@ export function ProfilePage({ onBack }: { onBack: () => void }) {
     }
   };
 
-  const handleAvatarChange = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = async () => {
-      if (typeof reader.result === 'string') {
-        const newUrl = reader.result;
-        setAvatarUrl(newUrl);
-        const ok = await saveProfile({
+  const handleAvatarChange = async (file: File) => {
+    try {
+      const newUrl = await uploadProfileImage(file, 'avatar');
+      if (!newUrl) return;
+      setAvatarUrl(newUrl);
+      const ok = await saveProfile({
           display_name: displayName,
           bank_name: bankName,
           account_number: accountNumber,
@@ -244,20 +244,34 @@ export function ProfilePage({ onBack }: { onBack: () => void }) {
           avatar_url: newUrl,
         });
         syncProfileToMember();
-        setMessage(ok ? t('avatarSuccess', locale) : t('avatarError', locale));
-      }
-    };
-    reader.readAsDataURL(file);
+      setMessage(ok ? t('avatarSuccess', locale) : t('avatarError', locale));
+    } catch {
+      setMessage(t('avatarError', locale));
+    }
   };
 
-  const handleQrChange = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      if (typeof e.target?.result === 'string') {
-        setRussiaQrUrl(e.target.result);
-      }
-    };
-    reader.readAsDataURL(file);
+  const handleQrChange = async (file: File) => {
+    try {
+      const newUrl = await uploadProfileImage(file, 'russia_qr');
+      if (!newUrl) return;
+      setRussiaQrUrl(newUrl);
+      const ok = await saveProfile({
+        display_name: displayName,
+        bank_name: bankName,
+        account_number: accountNumber,
+        account_holder: accountHolder,
+        phone_number: phoneNumber,
+        russia_bank: russiaBank,
+        russia_account_holder: russiaAccountHolder,
+        russia_qr_url: newUrl,
+        custom_qr_url: '',
+        avatar_url: avatarUrl,
+      });
+      syncProfileToMember();
+      setMessage(ok ? t('updateProfileSuccess', locale) : t('avatarError', locale));
+    } catch {
+      setMessage(t('avatarError', locale));
+    }
   };
 
   const handleRemoveMethod = (type: PaymentMethodType) => {
