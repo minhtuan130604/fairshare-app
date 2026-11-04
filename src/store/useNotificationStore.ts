@@ -1,5 +1,3 @@
-
-
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from './useAuthStore';
@@ -49,18 +47,33 @@ function saveReadIds(userId: string, ids: Set<string>) {
   }
 }
 
+// Biến kiểm soát ngoài store để chặn bão request khi đổi tab
+let lastFetchTimestamp = 0;
+let isFetchingInProgress = false;
+const MIN_FETCH_COOLDOWN_MS = 60 * 1000; // Tối đa 1 lần mỗi 60 giây
+
 export const useNotificationStore = create<NotificationState>((set, get) => ({
   notifications: [],
   isLoading: false,
 
   fetchNotifications: async () => {
+    const now = Date.now();
+
+    // 1. Nếu đang có request chạy ngầm hoặc vừa fetch cách đây dưới 60s và đã có dữ liệu -> Bỏ qua
+    if (isFetchingInProgress || (now - lastFetchTimestamp < MIN_FETCH_COOLDOWN_MS && get().notifications.length > 0)) {
+      return;
+    }
+
     const user = useAuthStore.getState().user;
     if (!user || !supabase) {
       set({ notifications: [] });
       return;
     }
 
+    isFetchingInProgress = true;
+    lastFetchTimestamp = now;
     set({ isLoading: true });
+
     try {
       // 1. Lời mời kết bạn
       let friendshipQuery = supabase
@@ -79,15 +92,16 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
         : { data: [] };
       const senderNames = new Map((senderProfiles || []).map((profile) => [profile.id, profile.display_name]));
 
-      // 2. Hóa đơn được chia sẻ
+      // 2. Hóa đơn được chia sẻ (tối ưu: chỉ select đúng id, title của bill)
       const { data: billRows, error: billError } = await supabase
         .from('bill_shares')
         .select('id, bill_id, created_at, bill:bills (id, title), sender:profiles!sender_id (display_name)')
         .eq('receiver_id', user.id)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(30);
       if (billError) throw billError;
 
-      // 3. Phản hồi hỗ trợ từ Admin (lấy các tin nhắn của user đã có câu trả lời)
+      // 3. Phản hồi hỗ trợ từ Admin
       const { data: supportRows } = await supabase
         .from('support_messages')
         .select('id, message, admin_reply, replied_at, created_at')
@@ -96,12 +110,13 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
         .order('replied_at', { ascending: false })
         .limit(10);
 
+      // 4. Thông báo hệ thống
       const { data: systemRows } = await supabase
         .from('notifications')
         .select('id, type, title, description, data, is_read, created_at')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
-        .limit(50);
+        .limit(30);
 
       const readIds = getReadIds(user.id);
 
@@ -168,6 +183,8 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     } catch (error) {
       console.error('Không thể tải thông báo:', error);
       set({ isLoading: false });
+    } finally {
+      isFetchingInProgress = false;
     }
   },
 
@@ -178,7 +195,11 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     ids.add(notificationId);
     saveReadIds(user.id, ids);
     void supabase?.from('notifications').update({ is_read: true }).eq('id', notificationId).eq('user_id', user.id);
-    set({ notifications: get().notifications.map((notification) => notification.id === notificationId ? { ...notification, isRead: true } : notification) });
+    set({
+      notifications: get().notifications.map((notification) =>
+        notification.id === notificationId ? { ...notification, isRead: true } : notification
+      ),
+    });
   },
 
   markAllAsRead: () => {
@@ -187,7 +208,9 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     const ids = getReadIds(user.id);
     get().notifications.forEach((notification) => ids.add(notification.id));
     saveReadIds(user.id, ids);
-    set({ notifications: get().notifications.map((notification) => ({ ...notification, isRead: true })) });
+    set({
+      notifications: get().notifications.map((notification) => ({ ...notification, isRead: true })),
+    });
   },
 }));
 

@@ -44,7 +44,7 @@ interface BillState {
   deleteGroup: (groupId: string) => void;
   removeMemberFromGroup: (groupId: string, memberName: string) => void;
   // Cloud Sync cho Nhóm & Chia sẻ bạn bè
-  syncGroupsToCloud: (groups?: MemberGroup[]) => Promise<void>;
+  syncGroupsToCloud: (groups?: MemberGroup[], force?: boolean) => Promise<void>;
   fetchUserGroups: () => Promise<void>;
   shareBillWithFriends: (billId: string, friendUserIds: string[]) => Promise<boolean>;
   // Item actions
@@ -164,6 +164,15 @@ function sanitizeBillForLocalStorage(bill: BillSession | null): BillSession | nu
   return bill ? stripBase64Images(bill) : null;
 }
 
+const sanitizeGroups = (groups: MemberGroup[]): MemberGroup[] =>
+  groups.map((group) => ({
+    ...group,
+    members: (group.members || []).map((member) => ({
+      ...member,
+      avatar_url: member.avatar_url?.startsWith('data:image') ? '' : member.avatar_url,
+    })),
+  }));
+
 const safeLocalStorage = createJSONStorage(() => {
   const storage = window.localStorage;
   return {
@@ -194,6 +203,19 @@ const safeLocalStorage = createJSONStorage(() => {
 // Đặt 2 biến này ngay phía trên export const useBillStore = create<BillState>()(
 let cloudSyncTimeout: ReturnType<typeof setTimeout> | null = null;
 let lastLocalMutationTime = 0; // Khóa chống dội ngược từ Realtime Supabase
+const persistedBillFingerprints = new Map<string, string>();
+const GROUPS_FETCH_COOLDOWN_MS = 30 * 1000;
+const GROUPS_SYNC_COOLDOWN_MS = 30 * 1000;
+const FETCH_BILLS_COOLDOWN_MS = 30 * 1000;
+let lastGroupsSyncTime = 0;
+let pendingGroupsSync: { userId: string; groups: MemberGroup[] } | null = null;
+let pendingGroupsSyncTimer: ReturnType<typeof setTimeout> | null = null;
+const lastSyncedGroupsByUser = new Map<string, string>();
+let lastFetchGroupsTime = 0;
+let isFetchingGroupsInProgress = false;
+let lastFetchBillsTime = 0;
+let isFetchingBills = false;
+
 
 export const useBillStore = create<BillState>()(
   persist(
@@ -490,12 +512,42 @@ export const useBillStore = create<BillState>()(
         }
       },
 
-      syncGroupsToCloud: async (groupsToSync?: MemberGroup[]) => {
+      syncGroupsToCloud: async (groupsToSync?: MemberGroup[], force = false) => {
         const user = useAuthStore.getState().user;
         if (!user || !supabase) return;
-        const groups = groupsToSync ?? get().savedGroups;
+        const groups = sanitizeGroups(groupsToSync ?? get().savedGroups);
+        const serializedGroups = JSON.stringify(groups);
+        if (lastSyncedGroupsByUser.get(user.id) === serializedGroups) return;
+
+        const remainingCooldown = GROUPS_SYNC_COOLDOWN_MS - (Date.now() - lastGroupsSyncTime);
+        if (!force && remainingCooldown > 0) {
+          pendingGroupsSync = { userId: user.id, groups };
+          if (!pendingGroupsSyncTimer) {
+            pendingGroupsSyncTimer = setTimeout(() => {
+              pendingGroupsSyncTimer = null;
+              const pending = pendingGroupsSync;
+              pendingGroupsSync = null;
+              if (pending && useAuthStore.getState().user?.id === pending.userId) {
+                void get().syncGroupsToCloud(pending.groups);
+              }
+            }, remainingCooldown);
+          }
+          return;
+        }
+
+        if (pendingGroupsSyncTimer) {
+          clearTimeout(pendingGroupsSyncTimer);
+          pendingGroupsSyncTimer = null;
+        }
+        pendingGroupsSync = null;
+        lastGroupsSyncTime = Date.now();
         try {
-          await supabase.from('profiles').update({ member_groups: groups }).eq('id', user.id);
+          const { error } = await supabase
+            .from('profiles')
+            .update({ member_groups: groups })
+            .eq('id', user.id);
+          if (error) throw error;
+          lastSyncedGroupsByUser.set(user.id, serializedGroups);
         } catch (err) {
           console.error('Lỗi lưu nhóm lên cloud:', err);
         }
@@ -517,6 +569,12 @@ export const useBillStore = create<BillState>()(
       fetchUserGroups: async () => {
         const user = useAuthStore.getState().user;
         if (!user || !supabase) return;
+
+        const now = Date.now();
+        if (isFetchingGroupsInProgress) return;
+        if (now - lastFetchGroupsTime < GROUPS_FETCH_COOLDOWN_MS) return;
+
+        isFetchingGroupsInProgress = true;
         try {
           const { data, error } = await supabase
             .from('profiles')
@@ -524,18 +582,21 @@ export const useBillStore = create<BillState>()(
             .eq('id', user.id)
             .single();
           if (error) throw error;
-          const cloudGroups = (data?.member_groups as MemberGroup[]) || [];
-          const localGroups = get().savedGroups;
+          const rawCloudGroups = Array.isArray(data?.member_groups)
+            ? (data.member_groups as MemberGroup[])
+            : [];
+          const cloudGroups = sanitizeGroups(rawCloudGroups);
+          lastSyncedGroupsByUser.set(user.id, JSON.stringify(rawCloudGroups));
+          const localGroups = sanitizeGroups(get().savedGroups);
           const groupMap = new Map<string, MemberGroup>();
           localGroups.forEach((g) => groupMap.set(g.id, g));
           cloudGroups.forEach((g) => groupMap.set(g.id, g));
-          const mergedGroups = Array.from(groupMap.values());
-          set({ savedGroups: mergedGroups });
-          if (mergedGroups.length !== cloudGroups.length) {
-            void get().syncGroupsToCloud(mergedGroups);
-          }
+          set({ savedGroups: Array.from(groupMap.values()) });
         } catch (err) {
           console.error('Lỗi tải nhóm từ cloud:', err);
+        } finally {
+          isFetchingGroupsInProgress = false;
+          lastFetchGroupsTime = Date.now();
         }
       },
 
@@ -1077,7 +1138,7 @@ export const useBillStore = create<BillState>()(
         };
         const updated = [newGroup, ...savedGroups];
         set({ savedGroups: updated });
-        void get().syncGroupsToCloud(updated);
+        void get().syncGroupsToCloud(updated, true);
       },
 
       applyGroupToBill: (groupId: string) => {
@@ -1327,13 +1388,16 @@ export const useBillStore = create<BillState>()(
         const user = useAuthStore.getState().user;
         if (!user || !supabase) return;
 
+        const now = Date.now();
+        if (isFetchingBills) return;
+        if (get().history.length > 0 && now - lastFetchBillsTime < FETCH_BILLS_COOLDOWN_MS) return;
+
         // NẾU NGƯỜI DÙNG VỪA BẤM TRÊN GIAO DIỆN TRONG VÒNG 4 GIÂY QUA -> BỎ QUA REALTIME FETCH ĐỂ KHÔNG BỊ GIẬT NGƯỢC STATE!
         if (Date.now() - lastLocalMutationTime < 4000) {
           return;
         }
 
-        void get().fetchUserGroups();
-
+        isFetchingBills = true;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const normalizeBillRow = (row: any): BillSession => {
           const raw = row?.data || row?.bill_data || row || {};
@@ -1436,15 +1500,21 @@ export const useBillStore = create<BillState>()(
             isSyncing: false,
             syncError: err instanceof Error ? err.message : 'Lỗi đồng bộ',
           });
+        } finally {
+          isFetchingBills = false;
+          lastFetchBillsTime = Date.now();
         }
       },
 
       saveBillToCloud: async (billToSave?: BillSession) => {
-        lastLocalMutationTime = Date.now(); // Gia hạn khóa chống ghi đè
         const targetBill = billToSave || get().currentBill;
         const user = useAuthStore.getState().user;
         if (!user || !supabase || !targetBill || targetBill.isSharedBill) return;
         if ((!targetBill.items || targetBill.items.length === 0) && (!targetBill.members || targetBill.members.length <= 1)) return;
+        const fingerprint = (bill: BillSession) => JSON.stringify({ id: bill.id, user_id: user.id, title: bill.title || 'Hóa đơn', data: { ...bill, currency: bill.currency || 'VND', mode: bill.mode || (bill.expenses?.length ? 'TIMELINE' : 'SINGLE'), expenses: Array.isArray(bill.expenses) ? bill.expenses : [] }, transfer_confirmations: bill.transfer_confirmations || {}, settled_transfers: bill.settled_transfers || [] });
+        const initialFingerprint = fingerprint(targetBill);
+        if (persistedBillFingerprints.get(`${user.id}:${targetBill.id}`) === initialFingerprint) return;
+        lastLocalMutationTime = Date.now(); // Gia hạn khóa chống ghi đè
 
         if (cloudSyncTimeout) clearTimeout(cloudSyncTimeout);
 
@@ -1460,6 +1530,8 @@ export const useBillStore = create<BillState>()(
               mode: latestBill.mode || (latestBill.expenses && latestBill.expenses.length > 0 ? 'TIMELINE' : 'SINGLE'),
               expenses: Array.isArray(latestBill.expenses) ? latestBill.expenses : [],
             };
+            const finalFingerprint = fingerprint(cleanBill);
+            if (persistedBillFingerprints.get(`${user.id}:${cleanBill.id}`) === finalFingerprint) return;
             const { error } = await supabase.from('bills').upsert({
               id: cleanBill.id,
               user_id: user.id,
@@ -1470,6 +1542,7 @@ export const useBillStore = create<BillState>()(
               updated_at: new Date().toISOString(),
             });
             if (error) throw error;
+            persistedBillFingerprints.set(`${user.id}:${cleanBill.id}`, finalFingerprint);
           } catch (err) {
             console.error('Lỗi lưu cloud ngầm:', err);
           }
@@ -1534,7 +1607,6 @@ export const useBillStore = create<BillState>()(
             if (billToSync && !Boolean((billToSync as any).isSharedBill)) {
               void get().saveBillToCloud(billToSync);
             }
-            void get().syncGroupsToCloud();
           } catch (err) {
             console.error('Lỗi lưu đồng bộ tên lên Cloud:', err);
           }
@@ -1642,6 +1714,9 @@ export const useBillStore = create<BillState>()(
       }),
       onRehydrateStorage: () => (state) => {
         if (!state) return;
+        if (Array.isArray(state.savedGroups)) {
+          state.savedGroups = sanitizeGroups(state.savedGroups);
+        }
         if (Array.isArray(state.history)) {
           state.history = state.history.map((b) => ({
             ...b,

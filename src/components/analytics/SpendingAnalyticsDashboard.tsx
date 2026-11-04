@@ -24,6 +24,7 @@ import { formatCurrency } from '../../utils/formatters';
 import type { BillSession } from '../../types/bill';
 import { Avatar } from '../ui/Avatar';
 import { supabase } from '../../lib/supabase';
+import { getCachedFriendProfiles } from '../../lib/socialCache';
 
 type FilterMode = 'month' | 'week' | 'year' | 'all';
 
@@ -101,7 +102,7 @@ export function SpendingAnalyticsDashboard() {
     async function loadFriendProfiles() {
       if (!supabase) return;
       try {
-        const { data } = await supabase.from('profiles').select('id, display_name, avatar_url');
+        const data = await getCachedFriendProfiles();
         if (data) {
           const map: Record<string, { display_name?: string; avatar_url?: string }> = {};
           data.forEach((p) => {

@@ -146,7 +146,7 @@ export function Header({ activePage, onNavigate }: HeaderProps) {
 
   useEffect(() => {
     void fetchNotifications();
-  }, [user?.id, fetchNotifications]);
+  }, [user?.id]);
 
   // Lắng nghe Realtime INSERT vào bảng notifications của Supabase để chuông tự động nhảy tức thì
   useEffect(() => {

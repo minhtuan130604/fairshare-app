@@ -8,7 +8,7 @@ import { useState, useEffect, useMemo, type FormEvent } from 'react';
 import { Avatar } from '../ui/Avatar';
 import { useLocale, t } from '../../hooks/useLocale';
 import { supabase } from '../../lib/supabase';
-
+import { getCachedFriendProfiles } from '../../lib/socialCache';
 // Hàm chuẩn hóa chuỗi tiếng Việt không dấu để tìm kiếm chính xác
 function normalizeString(str: string): string {
   return (str || '')
@@ -62,12 +62,7 @@ export function MemberManager() {
     async function fetchAndSyncProfiles() {
       if (!user || !supabase) return;
       try {
-        // Lấy tất cả profiles hiện có để vừa phục vụ tìm kiếm vừa đồng bộ tên mới nhất
-        const { data: profiles, error } = await supabase
-          .from('profiles')
-          .select('id, display_name, avatar_url, bank_name, account_number, account_holder, phone_number, russia_bank, custom_qr_url, russia_account_holder, russia_qr_url');
-
-        if (error || !profiles) return;
+        const profiles = await getCachedFriendProfiles();
 
         const candidates: CloudProfileCandidate[] = profiles
           .filter((p: any) => p.id !== user.id && p.display_name)
@@ -180,9 +175,6 @@ export function MemberManager() {
               members: syncedBillMembers,
             };
             useBillStore.setState({ currentBill: updatedBill });
-            if (!updatedBill.isSharedBill) {
-              void state.saveBillToCloud(updatedBill);
-            }
           }
         }
       } catch (err) {

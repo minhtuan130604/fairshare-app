@@ -1,3 +1,4 @@
+
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { CheckCircle2, Pencil, Plus } from 'lucide-react';
 import { HistoryPage } from './pages/HistoryPage';
@@ -30,7 +31,6 @@ import { ShareModal } from './components/summary/ShareModal';
 import { LuckyRouletteModal } from './components/summary/LuckyRouletteModal';
 import { useLocale, t } from './hooks/useLocale';
 import { useAutoSaveBill } from './hooks/useAutoSaveBill';
-import { useProfileStore } from './store/useProfileStore';
 import { MobileNav } from './components/layout/MobileNav';
 import { useRealtimeBills } from './hooks/useRealtimeBills';
 import { supabase } from './lib/supabase';
@@ -55,7 +55,6 @@ function AppContent() {
     currentBill,
     theme,
     isSyncing,
-    fetchUserBills,
     importBillFromURL,
     loadBillFromHistory,
     initializeNewBill,
@@ -64,7 +63,6 @@ function AppContent() {
 
   const { user, isTransitioning } = useAuthStore();
   const userId = user?.id;
-  const { fetchProfile } = useProfileStore();
   const { locale } = useLocale();
   const workspaceCopy = WORKSPACE_COPY[locale];
   const { status: saveStatus } = useAutoSaveBill();
@@ -180,13 +178,6 @@ function AppContent() {
       mounted = false;
     };
   }, [userId]);
-
-  useEffect(() => {
-    if (!userId || isAdminAccount) return;
-
-    void fetchUserBills();
-    void fetchProfile();
-  }, [userId, isAdminAccount, fetchUserBills, fetchProfile]);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');

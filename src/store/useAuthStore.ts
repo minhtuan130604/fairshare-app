@@ -1,4 +1,3 @@
-
 import { create } from 'zustand';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import type { Session, User } from '@supabase/supabase-js';
@@ -196,6 +195,7 @@ function readLocalSession(): LocalStoredSession | null {
       !('id' in parsed) ||
       !('email' in parsed) ||
       !('displayName' in parsed) ||
+
       !('createdAt' in parsed) ||
       typeof parsed.id !== 'string' ||
       typeof parsed.email !== 'string' ||
@@ -844,6 +844,20 @@ if (isSupabaseConfigured && supabase) {
   const hasRecoveryParam = () =>
     new URLSearchParams(window.location.search).get('reset-password') === '1';
 
+  // Biến cờ ghi nhớ ID người dùng đã đồng bộ để ngăn fetch lặp lại khi đổi tab
+  let lastSyncedUserId: string | null = null;
+
+  const loadInitialUserData = (userId: string) => {
+    if (lastSyncedUserId === userId) return;
+    lastSyncedUserId = userId;
+    void Promise.all([
+      useProfileStore.getState().fetchProfile(),
+      useBillStore.getState().fetchUserBills(),
+      useBillStore.getState().fetchUserGroups(),
+      useNotificationStore.getState().fetchNotifications(),
+    ]);
+  };
+
   supabase.auth.onAuthStateChange((event, session) => {
     // 1. Người dùng mở liên kết khôi phục mật khẩu từ email.
     if (event === 'PASSWORD_RECOVERY' || (hasRecoveryParam() && session?.user)) {
@@ -866,8 +880,9 @@ if (isSupabaseConfigured && supabase) {
 
     const previousUser = useAuthStore.getState().user;
     const isCurrentlyRecovery = useAuthStore.getState().isPasswordRecovery;
+    const currentUserId = session?.user?.id;
 
-    // 2. Đồng bộ tài khoản và phiên đăng nhập.
+    // 2. Cập nhật state tài khoản và phiên đăng nhập.
     useAuthStore.setState({
       session,
       user: session?.user ?? null,
@@ -875,21 +890,18 @@ if (isSupabaseConfigured && supabase) {
       error: null,
     });
 
-    // Đồng bộ toàn bộ dữ liệu theo đúng user id mới. Không dùng dữ liệu persisted của user trước.
-    if (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'INITIAL_SESSION') {
-      const signedInUserId = session?.user?.id;
-      if (signedInUserId) {
-        if (previousUser?.id !== signedInUserId) {
+    // CHỈ fetch dữ liệu khi:
+    // - Thực sự là đăng nhập mới (SIGNED_IN)
+    // - Hoặc tài khoản thay đổi hẳn sang một user khác
+    // - TUYỆT ĐỐI KHÔNG fetch lại nếu chỉ là đổi tab (TOKEN_REFRESHED / focus)
+    if (currentUserId && (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'INITIAL_SESSION')) {
+      if (lastSyncedUserId !== currentUserId) {
+        if (previousUser?.id && previousUser.id !== currentUserId) {
           useProfileStore.getState().clearProfile();
           useBillStore.getState().resetSessionState();
           useNotificationStore.setState({ notifications: [], isLoading: false });
         }
-        void Promise.all([
-          useProfileStore.getState().fetchProfile(),
-          useBillStore.getState().fetchUserBills(),
-          useBillStore.getState().fetchUserGroups(),
-          useNotificationStore.getState().fetchNotifications(),
-        ]);
+        loadInitialUserData(currentUserId);
       }
     }
 
@@ -901,10 +913,6 @@ if (isSupabaseConfigured && supabase) {
       !isCurrentlyRecovery &&
       !hasRecoveryParam()
     ) {
-
-      // Tự động kéo nhóm từ Cloud về ngay khi đăng nhập thành công
-      void useBillStore.getState().fetchUserGroups();
-      
       if (authTransitionTimeout !== undefined) {
         window.clearTimeout(authTransitionTimeout);
       }
@@ -922,8 +930,10 @@ if (isSupabaseConfigured && supabase) {
       }, AUTH_TRANSITION_MS);
     }
 
-    // 4. Khi đăng xuất, hủy animation và trạng thái khôi phục.
+    // 4. Khi đăng xuất, dọn dẹp sạch state và reset cờ đồng bộ.
     if (event === 'SIGNED_OUT') {
+      lastSyncedUserId = null;
+
       if (authTransitionTimeout !== undefined) {
         window.clearTimeout(authTransitionTimeout);
         authTransitionTimeout = undefined;
@@ -942,7 +952,7 @@ if (isSupabaseConfigured && supabase) {
     }
   });
 
-  // 5. Khôi phục phiên đăng nhập đã lưu khi ứng dụng khởi động.
+  // 5. Khôi phục phiên đăng nhập đã lưu khi ứng dụng khởi động lần đầu.
   void supabase.auth
     .getSession()
     .then(({ data, error }) => {
@@ -951,22 +961,22 @@ if (isSupabaseConfigured && supabase) {
           isLoading: false,
           error: getErrorMessage(error),
         });
-
         return;
       }
 
+      const initialUser = data.session?.user ?? null;
+
       useAuthStore.setState({
         session: data.session,
-        user: data.session?.user ?? null,
+        user: initialUser,
         isPasswordRecovery:
           useAuthStore.getState().isPasswordRecovery ||
-          Boolean(hasRecoveryParam() && data.session?.user),
+          Boolean(hasRecoveryParam() && initialUser),
         isLoading: false,
       });
 
-      // Nếu đã có session đăng nhập từ trước, kéo luôn nhóm từ Cloud về
-      if (data.session?.user) {
-        void useBillStore.getState().fetchUserGroups();
+      if (initialUser?.id) {
+        loadInitialUserData(initialUser.id);
       }
     })
     .catch((error: unknown) => {

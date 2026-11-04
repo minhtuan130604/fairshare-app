@@ -29,6 +29,10 @@ interface ProfileState {
 
 const LOCAL_PROFILE_KEY = 'fairshare_local_profile';
 
+const PROFILE_FETCH_COOLDOWN_MS = 60 * 1000;
+let lastFetchProfileTime = 0;
+let isFetchingProfile = false;
+
 const getInitialProfile = (): UserProfile | null => {
   if (typeof window === 'undefined') return null;
   try {
@@ -51,10 +55,13 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   error: null,
 
   fetchProfile: async () => {
+    const authUser = useAuthStore.getState().user;
+    const now = Date.now();
+    if (isFetchingProfile || (now - lastFetchProfileTime < 60 * 1000 && get().profile !== null)) return;
+
+    isFetchingProfile = true;
     set({ isLoading: true, error: null });
     try {
-      const authUser = useAuthStore.getState().user;
-
       // Không bao giờ hydrate profile của user khác (hoặc profile local không có owner).
       const localRaw = localStorage.getItem(LOCAL_PROFILE_KEY);
       let localProfile: UserProfile | null = null;
@@ -108,7 +115,6 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
 
           set({ profile, isLoading: false });
           localStorage.setItem(LOCAL_PROFILE_KEY, JSON.stringify(profile));
-          useBillStore.getState().syncProfileToMember();
           return;
         }
       }
@@ -116,7 +122,6 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       // 3. Nếu Supabase chưa có data, giữ nguyên localProfile
       if (localProfile) {
         set({ profile: localProfile, isLoading: false });
-        useBillStore.getState().syncProfileToMember();
         return;
       }
 
@@ -143,6 +148,9 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Không thể tải hồ sơ cá nhân';
       set({ error: msg, isLoading: false });
+    } finally {
+      lastFetchProfileTime = Date.now();
+      isFetchingProfile = false;
     }
   },
 
@@ -151,6 +159,24 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     try {
       const authUser = useAuthStore.getState().user;
       const targetId = authUser?.id || get().profile?.id || 'local_user_me';
+      const currentProfile = get().profile;
+      const profileFields = [
+        'display_name',
+        'bank_name',
+        'account_number',
+        'account_holder',
+        'phone_number',
+        'russia_bank',
+        'custom_qr_url',
+        'russia_account_holder',
+        'russia_qr_url',
+        'avatar_url',
+      ] as const;
+      const isIdenticalProfile = currentProfile?.id === targetId && profileFields.every((field) => (currentProfile[field] || '') === (data[field] || ''));
+      if (isIdenticalProfile) {
+        set({ isLoading: false, error: null });
+        return true;
+      }
 
       const updatedProfile: UserProfile = {
         id: targetId,

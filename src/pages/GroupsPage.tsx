@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/useAuthStore';
 import { useBillStore } from '../store/useBillStore';
 import type { Member } from '../types/bill';
+import { getCachedFriendProfiles, getCachedFriendships, invalidateSocialCache } from '../lib/socialCache';
 
 interface FriendProfile {
   id: string;
@@ -49,11 +50,7 @@ export function GroupsPage({ onBack }: { onBack: () => void }) {
     if (!user || !supabase) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('friendships')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (error) throw error;
+      const data = await getCachedFriendships();
 
       const incoming: PendingRequest[] = [];
       const accepted: { id: string; friendshipId: string; email: string }[] = [];
@@ -76,14 +73,10 @@ export function GroupsPage({ onBack }: { onBack: () => void }) {
       setPending(incoming);
 
       const ids = accepted.map((x) => x.id).filter(Boolean);
-      const { data: profiles } = ids.length
-        ? await supabase
-            .from('profiles')
-            .select('id, display_name, avatar_url, bank_name, account_number, account_holder, phone_number, russia_bank')
-            .in('id', ids)
-        : { data: [] };
-
-      const profileMap = new Map((profiles ?? []).map((p) => [p.id, p]));
+      const allProfiles = ids.length ? await getCachedFriendProfiles() : [];
+      const idSet = new Set(ids);
+      const profiles = allProfiles.filter((profile) => idSet.has(profile.id));
+      const profileMap = new Map(profiles.map((p) => [p.id, p]));
       setFriends(
         accepted.map((x) => ({
           ...x,
@@ -186,6 +179,7 @@ export function GroupsPage({ onBack }: { onBack: () => void }) {
     if (error) {
       setMessage(error.message);
     } else {
+      invalidateSocialCache();
       setMessage(t('friendRequestSent', locale));
       setFriendEmail('');
       void loadFriends();
@@ -231,12 +225,14 @@ export function GroupsPage({ onBack }: { onBack: () => void }) {
       .update({ status, friend_id: user.id })
       .eq('id', id);
     if (error) setMessage(error.message);
+    else invalidateSocialCache();
     void loadFriends();
   };
 
   const handleRemoveFriend = async (friendshipId: string) => {
     if (!supabase) return;
     await supabase.from('friendships').delete().eq('id', friendshipId);
+    invalidateSocialCache();
     void loadFriends();
   };
 
