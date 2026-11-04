@@ -16,7 +16,7 @@ interface ShareModalProps {
 }
 
 export function ShareModal({ isOpen, onClose }: ShareModalProps) {
-  const { currentBill, exportBillToURL } = useBillStore();
+  const { currentBill } = useBillStore();
   const { user } = useAuthStore();
   const { locale } = useLocale();
   const [copied, setCopied] = useState(false);
@@ -137,9 +137,10 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
     }
   };
 
+  const getShareURL = () => `${window.location.origin}/bill/${encodeURIComponent(currentBill.id)}`;
+
   const handleCopyURL = async () => {
-    const url = exportBillToURL();
-    if (!url) return;
+    const url = getShareURL();
 
     try {
       await navigator.clipboard.writeText(url);
@@ -151,8 +152,7 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
   };
 
   const handleShareURL = async () => {
-    const url = exportBillToURL();
-    if (!url) return;
+    const url = `${window.location.origin}/bill/${encodeURIComponent(currentBill.id)}`;
     if (typeof navigator.share === 'function') {
       try { await navigator.share({ title: currentBill.title || 'FairShare', text: generateTextSummary(), url }); return; }
       catch (error) { if (error instanceof DOMException && error.name === 'AbortError') return; }

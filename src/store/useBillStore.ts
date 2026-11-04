@@ -70,8 +70,7 @@ interface BillState {
   // Reset
   resetCurrentBill: () => void;
   resetSessionState: () => void;
-  // URL Sharing
-  exportBillToURL: () => string;
+  // Cloud links replace the former base64-in-query URL sharing.
   importBillFromURL: (encodedData: string) => boolean;
 }
 
@@ -1637,20 +1636,6 @@ export const useBillStore = create<BillState>()(
           window.localStorage.removeItem('fairshare-storage');
         } catch {
           // localStorage có thể bị chặn trong private browsing.
-        }
-      },
-
-      exportBillToURL: () => {
-        const { currentBill } = get();
-        if (!currentBill) return '';
-        try {
-          const json = JSON.stringify(currentBill);
-          const base64 = btoa(unescape(encodeURIComponent(json)));
-          const url = `${window.location.origin}${window.location.pathname}?bill=${base64}`;
-          return url;
-        } catch (error) {
-          console.error('Failed to export bill:', error);
-          return '';
         }
       },
 

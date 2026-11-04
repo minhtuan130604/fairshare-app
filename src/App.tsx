@@ -34,6 +34,7 @@ import { useAutoSaveBill } from './hooks/useAutoSaveBill';
 import { MobileNav } from './components/layout/MobileNav';
 import { useRealtimeBills } from './hooks/useRealtimeBills';
 import { supabase } from './lib/supabase';
+import { PublicBillPage } from './pages/PublicBillPage';
 
 import type { ActivePage } from './components/layout/Header';
 
@@ -210,6 +211,11 @@ function AppContent() {
     initializeNewBill();
   }
 }, [userId, isAdminAccount, currentBill, initializeNewBill]);
+
+  const publicBillMatch = window.location.pathname.match(/^\/bill\/([^/]+)\/?$/);
+  if (publicBillMatch) {
+    return <PublicBillPage billId={decodeURIComponent(publicBillMatch[1])} />;
+  }
 
   const finishPasswordReset = () => {
     window.history.replaceState({}, '', window.location.pathname);
