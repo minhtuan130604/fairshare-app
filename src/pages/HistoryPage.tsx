@@ -144,7 +144,7 @@ export function HistoryPage({ onBack, onOpenBill }: HistoryPageProps) {
       } else if (typeof store.saveBill === 'function' && currentBill) {
         await store.saveBill(currentBill);
       }
-      await fetchUserBills();
+      await fetchUserBills(true);
     } catch (err) {
       console.error('Lỗi khi đồng bộ:', err);
     } finally {

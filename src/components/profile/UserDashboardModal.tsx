@@ -374,7 +374,7 @@ export function UserDashboardModal({ isOpen, onClose, defaultTab = 'bills' }: Us
         phone_number: phoneNumber,
         russia_bank: russiaBank,
         custom_qr_url: '',
-        russia_qr_url: compressedQr,
+        russia_qr_url: publicUrl,
         avatar_url: profile?.avatar_url || '',
       });
       syncProfileToMember();
@@ -544,7 +544,7 @@ export function UserDashboardModal({ isOpen, onClose, defaultTab = 'bills' }: Us
                   {user && (
                     <button
                       type="button"
-                      onClick={() => void fetchUserBills()}
+                      onClick={() => void fetchUserBills(true)}
                       disabled={isSyncing}
                       className="btn btn-secondary text-xs py-1.5 px-2.5 flex items-center gap-1.5 shrink-0"
                     >

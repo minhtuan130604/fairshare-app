@@ -60,7 +60,7 @@ interface BillState {
   loadBillFromHistory: (billId: string) => void | Promise<void>;
   deleteBillFromHistory: (billId: string) => Promise<void>;
   // Cloud Sync
-  fetchUserBills: () => Promise<void>;
+  fetchUserBills: (force?: boolean) => Promise<void>;
   saveBillToCloud: (bill?: BillSession) => Promise<void>;
   deleteBillFromCloud: (billId: string) => Promise<void>;
   // Global Update
@@ -194,12 +194,31 @@ const safeLocalStorage = createJSONStorage(() => {
 let cloudSyncTimeout: ReturnType<typeof setTimeout> | null = null;
 let lastLocalMutationTime = 0; // Khóa chống dội ngược từ Realtime Supabase
 const persistedBillFingerprints = new Map<string, string>();
+const lastSyncedGroupsByUser = new Map<string, string>();
 const GROUPS_FETCH_COOLDOWN_MS = 30 * 1000;
 const FETCH_BILLS_COOLDOWN_MS = 30 * 1000;
+const BILLS_SYNC_TIME_KEY = 'fairshare_last_bills_fetch_time';
+const GROUPS_SYNC_TIME_KEY = 'fairshare_last_groups_fetch_time';
 let lastFetchGroupsTime = 0;
 let isFetchingGroupsInProgress = false;
 let lastFetchBillsTime = 0;
 let isFetchingBills = false;
+
+const getSessionSyncTime = (key: string, userId: string): number => {
+  try {
+    return Number(sessionStorage.getItem(`${key}:${userId}`) || 0);
+  } catch {
+    return 0;
+  }
+};
+
+const setSessionSyncTime = (key: string, userId: string): void => {
+  try {
+    sessionStorage.setItem(`${key}:${userId}`, String(Date.now()));
+  } catch {
+    // sessionStorage có thể bị chặn trong private browsing.
+  }
+};
 
 
 export const useBillStore = create<BillState>()(
@@ -521,8 +540,10 @@ export const useBillStore = create<BillState>()(
         const now = Date.now();
         if (isFetchingGroupsInProgress) return;
         if (now - lastFetchGroupsTime < GROUPS_FETCH_COOLDOWN_MS) return;
+        if (now - getSessionSyncTime(GROUPS_SYNC_TIME_KEY, user.id) < GROUPS_FETCH_COOLDOWN_MS) return;
 
         isFetchingGroupsInProgress = true;
+        setSessionSyncTime(GROUPS_SYNC_TIME_KEY, user.id);
         try {
           const { data, error } = await supabase
             .from('profiles')
@@ -1332,20 +1353,24 @@ export const useBillStore = create<BillState>()(
         }
       },
 
-      fetchUserBills: async () => {
+      fetchUserBills: async (force = false) => {
         const user = useAuthStore.getState().user;
         if (!user || !supabase) return;
 
         const now = Date.now();
+        const hasHistory = get().history.length > 0;
         if (isFetchingBills) return;
-        if (get().history.length > 0 && now - lastFetchBillsTime < FETCH_BILLS_COOLDOWN_MS) return;
+        // Chỉ cooldown khi store đã có dữ liệu. State rỗng luôn phải được hydrate từ cloud.
+        if (!force && hasHistory && now - lastFetchBillsTime < FETCH_BILLS_COOLDOWN_MS) return;
+        if (!force && hasHistory && now - getSessionSyncTime(BILLS_SYNC_TIME_KEY, user.id) < FETCH_BILLS_COOLDOWN_MS) return;
 
-        // NẾU NGƯỜI DÙNG VỪA BẤM TRÊN GIAO DIỆN TRONG VÒNG 4 GIÂY QUA -> BỎ QUA REALTIME FETCH ĐỂ KHÔNG BỊ GIẬT NGƯỢC STATE!
-        if (Date.now() - lastLocalMutationTime < 4000) {
+        // Không chặn thao tác Đồng bộ chủ động bởi khóa chống dội ngược.
+        if (!force && hasHistory && Date.now() - lastLocalMutationTime < 4000) {
           return;
         }
 
         isFetchingBills = true;
+        setSessionSyncTime(BILLS_SYNC_TIME_KEY, user.id);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const normalizeBillRow = (row: any): BillSession => {
           const raw = row?.data || row?.bill_data || row || {};

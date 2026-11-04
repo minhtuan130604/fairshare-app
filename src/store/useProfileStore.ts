@@ -68,7 +68,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   fetchProfile: async () => {
     const authUser = useAuthStore.getState().user;
     const now = Date.now();
-    if (isFetchingProfile || (now - lastFetchProfileTime < 60 * 1000 && get().profile !== null)) return;
+    if (isFetchingProfile || (now - lastFetchProfileTime < PROFILE_FETCH_COOLDOWN_MS && get().profile !== null)) return;
 
     isFetchingProfile = true;
     set({ isLoading: true, error: null });

@@ -844,12 +844,18 @@ if (isSupabaseConfigured && supabase) {
   const hasRecoveryParam = () =>
     new URLSearchParams(window.location.search).get('reset-password') === '1';
 
-  // Biến cờ ghi nhớ ID người dùng đã đồng bộ để ngăn fetch lặp lại khi đổi tab
-  let lastSyncedUserId: string | null = null;
+  const SYNC_KEY = 'fairshare_last_synced_user';
+  const SYNC_TIME_KEY = 'fairshare_last_synced_time';
 
   const loadInitialUserData = (userId: string) => {
-    if (lastSyncedUserId === userId) return;
-    lastSyncedUserId = userId;
+    const lastSyncedUserId = sessionStorage.getItem(SYNC_KEY);
+    const lastSyncTime = Number(sessionStorage.getItem(SYNC_TIME_KEY) || 0);
+    if (lastSyncedUserId === userId && Date.now() - lastSyncTime < 30_000) return;
+
+    // Ghi khóa trước khi khởi chạy promise để INITIAL_SESSION và getSession()
+    // không thể cùng lúc bắt đầu hai đợt tải dữ liệu.
+    sessionStorage.setItem(SYNC_KEY, userId);
+    sessionStorage.setItem(SYNC_TIME_KEY, String(Date.now()));
     void Promise.all([
       useProfileStore.getState().fetchProfile(),
       useBillStore.getState().fetchUserBills(),
@@ -895,7 +901,7 @@ if (isSupabaseConfigured && supabase) {
     // - Hoặc tài khoản thay đổi hẳn sang một user khác
     // - TUYỆT ĐỐI KHÔNG fetch lại nếu chỉ là đổi tab (TOKEN_REFRESHED / focus)
     if (currentUserId && (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'INITIAL_SESSION')) {
-      if (lastSyncedUserId !== currentUserId) {
+      if (sessionStorage.getItem('fairshare_last_synced_user') !== currentUserId) {
         if (previousUser?.id && previousUser.id !== currentUserId) {
           useProfileStore.getState().clearProfile();
           useBillStore.getState().resetSessionState();
@@ -932,7 +938,8 @@ if (isSupabaseConfigured && supabase) {
 
     // 4. Khi đăng xuất, dọn dẹp sạch state và reset cờ đồng bộ.
     if (event === 'SIGNED_OUT') {
-      lastSyncedUserId = null;
+      sessionStorage.removeItem(SYNC_KEY);
+      sessionStorage.removeItem(SYNC_TIME_KEY);
 
       if (authTransitionTimeout !== undefined) {
         window.clearTimeout(authTransitionTimeout);
