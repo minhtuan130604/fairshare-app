@@ -49,15 +49,7 @@ function normalizeText(str: string): string {
 /**
  * Tính tổng chi tiêu chuẩn xác cho cả chế độ Hóa đơn lẻ và Tour du lịch
  */
-const calculateBillTotal = (bill: BillSession): number => {
-  const summary = (bill as BillSession & { summary?: { total?: number } }).summary;
-  const totals = (bill as BillSession & { totals?: { total?: number } }).totals;
-  const total = summary?.total ?? totals?.total;
-  if (total != null) return Number(total) || 0;
-  return (bill as BillSession & { summaryOnly?: boolean; summaryTotal?: number }).summaryOnly
-    ? Number((bill as BillSession & { summaryTotal?: number }).summaryTotal) || 0
-    : calculateBillTotals(bill).total;
-};
+const calculateBillTotal = (bill: BillSession): number => calculateBillTotals(bill).total;
 
 export function HistoryPage({ onBack, onOpenBill }: HistoryPageProps) {
   const store = useBillStore() as any;
@@ -90,7 +82,7 @@ export function HistoryPage({ onBack, onOpenBill }: HistoryPageProps) {
   // 1. Lọc theo danh mục và từ khóa tìm kiếm
   const filteredBills = useMemo(() => {
     const query = normalizeText(searchQuery);
-    return bills.filter((bill) => (bill as BillSession & { summaryOnly?: boolean }).summaryOnly || (bill.items && bill.items.length > 0) || calculateBillTotal(bill) > 0).filter((bill) => {
+    return bills.filter((bill) => (bill.items && bill.items.length > 0) || (bill.expenses && bill.expenses.length > 0) || calculateBillTotal(bill) > 0).filter((bill) => {
       const matchType = matchesTypeFilter(bill, typeFilter);
       if (!matchType) return false;
       if (!query) return true;
@@ -317,14 +309,12 @@ export function HistoryPage({ onBack, onOpenBill }: HistoryPageProps) {
                 {dateBills.map((bill) => {
                   const activeSource = currentBill && currentBill.id === bill.id ? currentBill : bill;
 
-                  const displayTotal = Number((bill as BillSession & { summary?: { total?: number } }).summary?.total ?? (bill as BillSession & { totals?: { total?: number } }).totals?.total ?? 0);
-                  const displayCurrency = (bill as BillSession & { summary?: { currency?: string } }).summary?.currency || bill.currency || 'VND';
-
-                  const summaryOnly = Boolean((bill as BillSession & { summaryOnly?: boolean }).summaryOnly);
+                  const displayTotal = calculateBillTotal(bill);
+                  const displayCurrency = bill.currency || 'VND';
 
                   const safeMembers = getSafeMembers(activeSource);
                   const safeSource = { ...activeSource, members: safeMembers };
-                  const settlements = summaryOnly ? [] : calculateSettlements(calculateMemberBreakdowns(safeSource));
+                  const settlements = calculateSettlements(calculateMemberBreakdowns(safeSource));
                   const settledList: string[] = Array.isArray(activeSource.settled_transfers)
                     ? activeSource.settled_transfers
                     : [];
@@ -354,7 +344,7 @@ export function HistoryPage({ onBack, onOpenBill }: HistoryPageProps) {
                               {bill.title || t('unnamedBill', locale)}
                             </h3>
 
-                            {!summaryOnly && isTimelineBill(bill) && (
+                            {isTimelineBill(bill) && (
                               <span className="shrink-0 rounded-md bg-emerald-400/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-400">
                                 {t('filterTimeline', locale)}
                               </span>
@@ -380,7 +370,7 @@ export function HistoryPage({ onBack, onOpenBill }: HistoryPageProps) {
                               hour: '2-digit',
                               minute: '2-digit',
                             })}{' '}
-                            · {(bill as BillSession & { summary?: { memberCount?: number }; summaryMemberCount?: number }).summary?.memberCount ?? (bill as BillSession & { summaryMemberCount?: number }).summaryMemberCount ?? getSafeMembers(bill).length ?? 1} {t('membersNav', locale)}
+                            · {getSafeMembers(bill).length} {t('membersNav', locale)}
                             {historyTab === 'shared' && (
                               <>
                                 {' '}· <UserRound className="inline h-3 w-3" />{' '}

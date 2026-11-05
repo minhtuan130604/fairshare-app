@@ -1321,7 +1321,7 @@ export const useBillStore = create<BillState>()(
         const { history, sharedBills } = get();
         const bill = history.find((b) => b.id === billId)
           || sharedBills.find((b) => b.id === billId || b.shareId === billId);
-        if (bill && !(bill as BillSession & { summaryOnly?: boolean }).summaryOnly) {
+        if (bill) {
           const userId = useAuthStore.getState().user?.id;
           const ownerId = bill.user_id || (history.some((item) => item.id === bill.id) ? userId : undefined);
           const isOwnedBill = Boolean(userId && ownerId === userId);
@@ -1341,27 +1341,6 @@ export const useBillStore = create<BillState>()(
 
         const user = useAuthStore.getState().user;
         if (!user || !supabase) return;
-        if (bill && (bill as BillSession & { summaryOnly?: boolean }).summaryOnly) {
-          const share = sharedBills.find((item) => item.id === bill.id || item.shareId === billId);
-          let fullRow: any = null;
-          if (share?.isSharedBill) {
-            const { data } = await supabase.from('bill_shares').select('id, bill:bills (*)').eq('id', share.shareId || billId).eq('receiver_id', user.id).maybeSingle();
-            fullRow = data?.bill;
-          } else {
-            const { data } = await supabase.from('bills').select('*').eq('id', bill.id).maybeSingle();
-            fullRow = data;
-          }
-          if (!fullRow) return;
-          const raw = fullRow.data || fullRow;
-          const fullBill = { ...(raw as BillSession), id: fullRow.id, user_id: fullRow.user_id,
-            isSharedBill: fullRow.user_id !== user.id, shareId: share?.shareId, sharedBy: share?.sharedBy };
-          set((state) => ({
-            currentBill: fullBill,
-            history: fullBill.isSharedBill ? state.history : withBillInHistory(state, fullBill),
-            sharedBills: fullBill.isSharedBill ? state.sharedBills.map((entry) => entry.id === fullBill.id ? { ...fullBill, shareId: entry.shareId, sharedBy: entry.sharedBy } : entry) : state.sharedBills,
-          }));
-          return;
-        }
         const { data: ownedBill, error: ownedError } = await supabase.from('bills').select('*').eq('id', billId).maybeSingle();
         if (ownedError) return;
         let data = ownedBill;
@@ -1415,76 +1394,55 @@ export const useBillStore = create<BillState>()(
 
         isFetchingBills = true;
         setSessionSyncTime(BILLS_SYNC_TIME_KEY, user.id);
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const normalizeBillRow = (row: any): BillSession & { summaryOnly: boolean; summaryTotal: number; summaryMemberCount: number; summary: { title: string; currency: string; total: number; memberCount: number }; totals: { total: number; subtotal: number; tax: number; tip: number } } => {
-            const summary = row?.summary || {};
-            const title = summary.title || row?.title || 'Hóa đơn';
-            const currency = summary.currency || 'VND';
-            const total = Number(summary.total || 0);
-            const memberCount = Math.max(Number(summary.memberCount || 1), 1);
-            const members: Member[] = Array.isArray(row?.members)
-              ? row.members.filter((member: unknown): member is Member =>
-                  Boolean(member && typeof member === 'object' && 'id' in member && 'name' in member)
-                )
-              : Array.from({ length: memberCount }, (_, index) => ({
-                  id: `placeholder-member-${index}`,
-                  name: `Member ${index + 1}`,
-                }));
+          // The bill payload is authoritative. Keep summary only as optional metadata.
+          const normalizeBillRow = (row: any): BillSession => {
+            const raw = row?.data && typeof row.data === 'object' ? row.data : {};
             return {
-              id: row?.id || generateId(),
+              ...(raw as BillSession),
+              id: row?.id || raw.id || generateId(),
               user_id: row?.user_id,
-              title,
-              date: row?.created_at || new Date().toISOString(),
-              currency,
-              summary: { title, currency, total, memberCount },
-              totals: { total, subtotal: total, tax: 0, tip: 0 },
-              summaryOnly: true,
-              summaryTotal: total,
-              summaryMemberCount: memberCount,
-              timelineMembers: [],
-              category: 'dining',
-              mode: 'SINGLE',
-              expenses: [],
-              items: [],
-              members,
-              taxPercent: 0,
-              tipPercent: 0,
-              paidByMemberId: '',
-              splitMode: 'ITEMIZED',
-              isSharedBill: false,
-              transfer_confirmations: {},
-              settled_transfers: [],
+              title: raw.title || row?.title || 'Hóa đơn',
+              date: raw.date || row?.created_at || new Date().toISOString(),
+              currency: raw.currency || row?.summary?.currency || 'VND',
+              mode: raw.mode || (Array.isArray(raw.expenses) && raw.expenses.length > 0 ? 'TIMELINE' : 'SINGLE'),
+              items: Array.isArray(raw.items) ? raw.items : [],
+              expenses: Array.isArray(raw.expenses) ? raw.expenses : [],
+              members: Array.isArray(raw.members) ? raw.members : [],
+              timelineMembers: Array.isArray(raw.timelineMembers) ? raw.timelineMembers : [],
+              transfer_confirmations: row?.transfer_confirmations ?? raw.transfer_confirmations ?? {},
+              settled_transfers: row?.settled_transfers ?? raw.settled_transfers ?? [],
             };
           };
 
         try {
           const { data: myBillsData, error: myError } = await supabase
             .from('bills')
-            .select('id, user_id, title, created_at, updated_at, summary')
+            .select('*')
             .eq('user_id', user.id)
             .order('created_at', { ascending: false });
           if (myError) throw myError;
 
-          const { data: sharedData } = await supabase
+          const { data: sharedData, error: sharedError } = await supabase
             .from('bill_shares')
-            .select('id, bill:bills (id, user_id, title, created_at, updated_at, summary), sender:profiles!sender_id (display_name)')
+            .select('id, bill:bills (*), sender:profiles!sender_id (display_name)')
             .eq('receiver_id', user.id);
+          if (sharedError) throw sharedError;
 
           const myBills = (myBillsData || [])
-            .map((b) => ({ ...normalizeBillRow({ ...b, summaryOnly: true }), user_id: user.id, isSharedBill: false }))
+            .map((row) => ({ ...normalizeBillRow(row), user_id: user.id, isSharedBill: false }))
             .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
 
           const sharedBillsList = (sharedData || [])
             .filter((item: any) => Boolean(item.bill))
             .map((item: any) => ({
-              ...normalizeBillRow({ ...item.bill, summaryOnly: true }),
+              ...normalizeBillRow(item.bill),
               user_id: item.bill.user_id,
               shareId: item.id,
               sharedBy: item.sender?.display_name || 'Bạn bè',
               isSharedBill: item.bill.user_id !== user.id,
             }));
 
-          // Kiểm tra lại một lần nữa trước khi set state: nếu người dùng vừa bấm trong lúc đang tải mạng thì giữ nguyên currentBill của người dùng
+          // Keep the active bill untouched if a local edit happened during the fetch.
           if (Date.now() - lastLocalMutationTime < 4000) {
             set({ history: myBills, sharedBills: sharedBillsList, isSyncing: false });
             return;
