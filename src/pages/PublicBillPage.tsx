@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { QrCode } from 'lucide-react';
-import { ArrowRight, Check, Copy, CreditCard, Home } from 'lucide-react';
+import { ArrowRight, Check, Copy, CreditCard, Home, X, Download } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { calculateBillTotals, calculateMemberBreakdowns, calculateSettlements } from '../utils/calculations';
 import { formatCurrency, formatDate } from '../utils/formatters';
@@ -12,6 +12,14 @@ type PublicProfile = {
   display_name?: string; bank_name?: string; account_number?: string; account_holder?: string;
   russia_bank?: string; russia_account_holder?: string; phone_number?: string;
   custom_qr_url?: string; russia_qr_url?: string;
+};
+
+const normalizeRussianPhone = (phone: string) => {
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length === 11 && digits.startsWith('8')) return `+7${digits.slice(1)}`;
+  if (digits.length === 11 && digits.startsWith('7')) return `+${digits}`;
+  if (digits.length === 10) return `+7${digits}`;
+  return phone.trim();
 };
 
 const normaliseBill = (row: Record<string, unknown>): BillSession => {
@@ -35,13 +43,38 @@ export function PublicBillPage({ billId }: PublicBillPageProps) {
   const [selectedMemberId, setSelectedMemberId] = useState('all');
   const [status, setStatus] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
   const [copied, setCopied] = useState(false);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [offline, setOffline] = useState(false);
+  const [installEvent, setInstallEvent] = useState<(Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> }) | null>(null);
+  const [pwaVisible, setPwaVisible] = useState(false);
   const { locale } = useLocale();
+
+  useEffect(() => {
+    try { setPwaVisible(sessionStorage.getItem('fairshare_pwa_banner_dismissed') !== 'true' && !window.matchMedia('(display-mode: standalone)').matches); } catch { setPwaVisible(true); }
+    const onInstallPrompt = (event: Event) => { event.preventDefault(); setInstallEvent(event as Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> }); };
+    window.addEventListener('beforeinstallprompt', onInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', onInstallPrompt);
+  }, []);
 
   useEffect(() => {
     let active = true;
     const load = async () => {
-      if (!supabase) { setStatus('error'); return; }
-      setStatus('loading');
+      const cacheKey = `fairshare_public_bill_cache_${billId}`;
+      const cachedBill = () => {
+        try {
+          const cached = localStorage.getItem(cacheKey);
+          return cached ? JSON.parse(cached) as { bill: BillSession; profile: PublicProfile | null } : null;
+        } catch { return null; }
+      };
+      const showCached = () => {
+        const cached = cachedBill();
+        if (!cached?.bill) return false;
+        const cachedNormalized = normaliseBill(cached.bill as unknown as Record<string, unknown>);
+        setBill(cachedNormalized); setProfile(cached.profile || null); setOffline(true); setStatus('ready');
+        return true;
+      };
+      if (!supabase) { if (!showCached()) setStatus('error'); return; }
+      setStatus('loading'); setOffline(false);
       try {
         const { data: billRow, error } = await supabase.from('bills').select('*').eq('id', billId).maybeSingle();
         if (error) throw error;
@@ -54,10 +87,13 @@ export function PublicBillPage({ billId }: PublicBillPageProps) {
           if (result.error) console.warn('Unable to load bill owner profile:', result.error.message);
           loadedProfile = result.data as PublicProfile | null;
         }
-        if (active) { setBill(loadedBill); setProfile(loadedProfile); setStatus('ready'); }
+        if (active) {
+          setBill(loadedBill); setProfile(loadedProfile); setOffline(false); setStatus('ready');
+          try { localStorage.setItem(cacheKey, JSON.stringify({ bill: loadedBill, profile: loadedProfile })); } catch (cacheError) { console.warn('Unable to cache public bill:', cacheError); }
+        }
       } catch (error) {
         console.error('Unable to load public bill:', error);
-        if (active) setStatus('error');
+        if (active && !showCached()) setStatus('error');
       }
     };
     void load();
@@ -136,11 +172,26 @@ export function PublicBillPage({ billId }: PublicBillPageProps) {
   const qrUrl = isRub ? recipientProfile.russia_qr_url || recipientProfile.custom_qr_url || '' : hasVietAccount
     ? `https://img.vietqr.io/image/${recipientProfile.bank_name}-${recipientProfile.account_number}-compact2.png?amount=${Math.round(selectedBreakdown?.totalOwed || totals?.total || 0)}&addInfo=${encodeURIComponent(bill?.title || 'FairShare')}&accountName=${encodeURIComponent(recipientName || '')}`
     : recipientProfile.custom_qr_url || '';
-  const copyAccount = async () => {
+  const copyValue = async (value: string, key: string) => {
+    if (!value) return;
+    await navigator.clipboard.writeText(value);
+    setCopiedKey(key);
+    window.setTimeout(() => setCopiedKey((current) => current === key ? null : current), 2000);
+  };
+  const normalizedPhone = recipientProfile.phone_number ? normalizeRussianPhone(recipientProfile.phone_number) : '';
+  const amountToCopy = Math.round(isSelectedPayer ? amountReceived : (amountToPayPayer || selectedBreakdown?.totalOwed || totals?.total || 0));
+  const copyAccount = () => copyValue(isRub ? normalizedPhone : (recipientProfile.account_number || ''), 'account');
+  const copyAmount = () => copyValue(String(amountToCopy), 'amount');
+  const copyAll = async () => {
     if (!paymentDetails) return;
-    await navigator.clipboard.writeText(paymentDetails);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1800);
+    await navigator.clipboard.writeText(`${paymentDetails}\n${t('total_bill_tab', locale)}: ${amountToCopy}\n${bill?.title || ''}`);
+    setCopied(true); window.setTimeout(() => setCopied(false), 2000);
+  };
+  const dismissPwa = () => { setPwaVisible(false); try { sessionStorage.setItem('fairshare_pwa_banner_dismissed', 'true'); } catch { /* storage may be unavailable */ } };
+  const installPwa = async () => {
+    if (!installEvent) return;
+    await installEvent.prompt(); await installEvent.userChoice;
+    setInstallEvent(null); dismissPwa();
   };
 
   if (status === 'loading') return <PageMessage text={t('loading_public_bill', locale)} locale={locale} />;
@@ -150,6 +201,8 @@ export function PublicBillPage({ billId }: PublicBillPageProps) {
   return (
     <main className="min-h-screen bg-canvas px-4 py-8 text-ink sm:px-6">
       <div className="mx-auto max-w-2xl space-y-5">
+        {offline && <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-ink-2">{t('offline_mode_badge', locale)} · {t('offline_bill_message', locale)}</p>}
+        {pwaVisible && <div className="flex items-center justify-between gap-3 rounded-xl border border-line bg-surface px-3 py-2 text-xs text-ink-2"><span className="min-w-0">{installEvent ? <button type="button" onClick={() => void installPwa()} className="inline-flex items-center gap-2 font-semibold text-accent"><Download className="h-4 w-4 shrink-0" />{t('pwa_install_btn', locale)}</button> : /iPad|iPhone|iPod/.test(navigator.userAgent) && !('standalone' in navigator && (navigator as Navigator & { standalone?: boolean }).standalone) ? t('pwa_ios_guide', locale) : null}</span><button type="button" aria-label="Close" onClick={dismissPwa} className="shrink-0 rounded-lg p-1 hover:bg-surface-2"><X className="h-4 w-4" /></button></div>}
         <header className="rounded-3xl border border-line bg-surface p-6 text-center shadow-lg shadow-black/10">
           <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-accent/15 text-accent"><QrCode /></div>
           <p className="text-xs uppercase tracking-[0.2em] text-ink-3">{t('public_bill_subtitle', locale)}</p>
@@ -180,7 +233,11 @@ export function PublicBillPage({ billId }: PublicBillPageProps) {
           <h2 className="flex items-center gap-2 text-lg font-semibold"><CreditCard className="h-5 w-5 text-accent" /> {t('transfer_info_title', locale)}</h2>
           {qrUrl && <img src={qrUrl} alt="Mã QR thanh toán" className="mx-auto mt-4 h-56 w-56 rounded-xl object-contain" />}
           <div className="mt-4 space-y-2 text-sm text-ink-2"><p>{t('recipient_label', locale)} <strong className="text-ink">{recipientName || payerMember?.name || '—'}</strong></p><p>{t('bank_label', locale)} <strong className="text-ink">{bankDisplayName}</strong></p><p>{t('account_or_phone_label', locale)} <strong className="text-ink">{recipientAccount || '—'}</strong></p></div>
-          <button type="button" onClick={() => void copyAccount()} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-line px-4 py-3 text-sm font-semibold hover:bg-surface-2">{copied ? <Check className="h-4 w-4 text-accent" /> : <Copy className="h-4 w-4" />}{copied ? t('copied', locale) : t('copy_bank_info', locale)}</button>
+          <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <button type="button" onClick={() => void copyAccount()} disabled={!(isRub ? normalizedPhone : recipientProfile.account_number)} className="flex min-w-0 items-center justify-center gap-2 rounded-xl border border-line px-3 py-3 text-center text-xs font-semibold hover:bg-surface-2 disabled:opacity-50">{copiedKey === 'account' ? <Check className="h-4 w-4 shrink-0 text-accent" /> : <Copy className="h-4 w-4 shrink-0" />}{copiedKey === 'account' ? t('copied', locale) : t(isRub ? 'copy_phone_sbp' : 'copy_account_number', locale)}</button>
+            <button type="button" onClick={() => void copyAmount()} className="flex min-w-0 items-center justify-center gap-2 rounded-xl border border-line px-3 py-3 text-center text-xs font-semibold hover:bg-surface-2">{copiedKey === 'amount' ? <Check className="h-4 w-4 shrink-0 text-accent" /> : <Copy className="h-4 w-4 shrink-0" />}{copiedKey === 'amount' ? t('copied_amount', locale) : t('copy_amount', locale, { amount: formatAmount(amountToCopy) })}</button>
+          </div>
+          <button type="button" onClick={() => void copyAll()} className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-line px-4 py-2.5 text-sm font-semibold hover:bg-surface-2">{copied ? <Check className="h-4 w-4 text-accent" /> : <Copy className="h-4 w-4" />}{copied ? t('copied', locale) : t('copy_bank_info', locale)}</button>
         </section>}
         <button type="button" onClick={() => { window.location.href = '/'; }} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-accent px-5 py-4 text-center font-semibold text-white hover:opacity-90">{t('create_bill_cta', locale)} <ArrowRight className="h-4 w-4" /></button>
         <a href="/" className="flex items-center justify-center gap-2 text-sm text-ink-3"><Home className="h-4 w-4" /> {t('home_link', locale)}</a>
