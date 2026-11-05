@@ -859,7 +859,6 @@ if (isSupabaseConfigured && supabase) {
     void Promise.all([
       useProfileStore.getState().fetchProfile(),
       useBillStore.getState().fetchUserBills(),
-      useBillStore.getState().fetchUserGroups(),
       useNotificationStore.getState().fetchNotifications(),
     ]);
   };

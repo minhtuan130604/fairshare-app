@@ -96,7 +96,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       if (authUser && isSupabaseConfigured && supabase) {
         const { data, error } = await supabase
           .from('profiles')
-          .select('*')
+          .select('id, display_name, avatar_url, bank_name, account_number, account_holder, phone_number, russia_bank, russia_account_holder, russia_qr_url, custom_qr_url, member_groups, updated_at')
           .eq('id', authUser.id)
           .maybeSingle();
 
@@ -123,6 +123,9 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
             avatar_url: data.avatar_url || localProfile?.avatar_url || '',
             updated_at: data.updated_at,
           });
+          if (Array.isArray(data.member_groups)) {
+            useBillStore.setState({ savedGroups: data.member_groups });
+          }
 
           set({ profile, isLoading: false });
           localStorage.setItem(LOCAL_PROFILE_KEY, JSON.stringify(profile));

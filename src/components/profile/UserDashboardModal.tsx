@@ -1,3 +1,5 @@
+import { getCachedFriendProfiles, getCachedFriendships, invalidateSocialCache } from '../../lib/socialCache';
+
 
 import { useState, useEffect, useCallback } from 'react';
 import {
@@ -119,12 +121,7 @@ export function UserDashboardModal({ isOpen, onClose, defaultTab = 'bills' }: Us
     if (!user || !supabase) return;
     setIsLoadingFriends(true);
     try {
-      const { data: friendships, error } = await supabase
-        .from('friendships')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
+      const friendships = await getCachedFriendships();
 
       const myEmail = user.email?.toLowerCase();
       const pending: { id: string; email: string }[] = [];
@@ -150,12 +147,9 @@ export function UserDashboardModal({ isOpen, onClose, defaultTab = 'bills' }: Us
       // Lấy Profile thật của bạn bè
       const validIds = acceptedTargetIds.map((item) => item.id).filter(Boolean);
       if (validIds.length > 0) {
-        const { data: profilesData } = await supabase
-          .from('profiles')
-          .select('id, display_name, avatar_url, bank_name, account_number, account_holder, phone_number, russia_bank, russia_account_holder, russia_qr_url, custom_qr_url')
-          .in('id', validIds);
-
-        const profileMap = new Map((profilesData || []).map((p) => [p.id, p]));
+        const allProfiles = await getCachedFriendProfiles();
+        const validIdSet = new Set(validIds);
+        const profileMap = new Map(allProfiles.filter((profile) => validIdSet.has(profile.id)).map((p) => [p.id, p]));
 
         const uniqueAcceptedFriends = Array.from(
           new Map(acceptedTargetIds.map((item) => [item.id || item.email, item])).values()
@@ -248,6 +242,7 @@ export function UserDashboardModal({ isOpen, onClose, defaultTab = 'bills' }: Us
         status: 'pending',
       });
       if (error) throw error;
+      invalidateSocialCache();
       setFriendEmailInput('');
       setAccountMessage(t('friendRequestSent', locale));
       await loadFriendshipsAndProfiles();
@@ -293,6 +288,7 @@ export function UserDashboardModal({ isOpen, onClose, defaultTab = 'bills' }: Us
         .update({ status, friend_id: user.id })
         .eq('id', id);
       if (error) throw error;
+      invalidateSocialCache();
       await loadFriendshipsAndProfiles();
     } catch (err) {
       console.error(err);
@@ -303,6 +299,7 @@ export function UserDashboardModal({ isOpen, onClose, defaultTab = 'bills' }: Us
     if (!supabase) return;
     try {
       await supabase.from('friendships').delete().eq('id', friendshipId);
+      invalidateSocialCache();
       await loadFriendshipsAndProfiles();
     } catch (err) {
       console.error(err);

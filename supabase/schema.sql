@@ -18,6 +18,11 @@ create table if not exists bills (
   created_at timestamp with time zone default now()
 );
 
+
+-- Egress optimization for the alternate schema.
+ALTER TABLE public.bills ADD COLUMN IF NOT EXISTS summary JSONB NOT NULL DEFAULT '{}'::jsonb;
+CREATE INDEX IF NOT EXISTS bills_user_created_at_idx ON public.bills (user_id, created_at DESC);
+
 -- RLS policies for profiles
 alter table profiles enable row level security;
 create policy "Users can read own profile" on profiles for select using (auth.uid() = user_id);

@@ -140,6 +140,25 @@ const withBillInHistory = (state: Pick<BillState, 'history'>, bill: BillSession)
 
 const BASE64_DATA_URL_RE = /^data:image\/[^;]+;base64,/i;
 
+function createBillSummary(bill: BillSession) {
+  const clean = stripBase64Images(bill);
+  const mode = clean.mode || (clean.expenses?.length ? 'TIMELINE' : 'SINGLE');
+  const total = mode === 'TIMELINE'
+    ? (clean.expenses || []).reduce((sum, expense) => {
+      const subtotal = (expense.items || []).reduce((itemsTotal, item) => itemsTotal + (Number(item.price) || 0) * (Number(item.quantity) || 0), 0);
+      return sum + subtotal + subtotal * ((Number(expense.taxPercent) || 0) / 100) + subtotal * ((Number(expense.tipPercent) || 0) / 100);
+    }, 0)
+    : (clean.items || []).reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0), 0)
+      * (1 + (Number(clean.taxPercent) || 0) / 100 + (Number(clean.tipPercent) || 0) / 100);
+  const members = mode === 'TIMELINE' ? clean.timelineMembers || clean.members || [] : clean.members || [];
+  return {
+    title: clean.title || 'Hóa đơn', date: clean.date, currency: clean.currency || 'VND',
+    category: clean.category || 'dining', mode, total, memberCount: members.length,
+    settled_transfers: clean.settled_transfers || [],
+  };
+}
+
+
 function stripBase64Images<T>(value: T): T {
   if (typeof value === 'string') return (BASE64_DATA_URL_RE.test(value) ? '' : value) as T;
   if (Array.isArray(value)) return value.map((item) => stripBase64Images(item)) as T;
@@ -305,7 +324,8 @@ export const useBillStore = create<BillState>()(
             id: cloudBillId,
             user_id: user.id,
             title: billToStore.title || 'Hóa đơn',
-            data: billToStore,
+            data: stripBase64Images(billToStore),
+            summary: createBillSummary(billToStore),
             transfer_confirmations: billToStore.transfer_confirmations || {},
             settled_transfers: billToStore.settled_transfers || [],
             updated_at: updatedAt,
@@ -1300,7 +1320,7 @@ export const useBillStore = create<BillState>()(
         const { history, sharedBills } = get();
         const bill = history.find((b) => b.id === billId)
           || sharedBills.find((b) => b.id === billId || b.shareId === billId);
-        if (bill) {
+        if (bill && !(bill as BillSession & { summaryOnly?: boolean }).summaryOnly) {
           const userId = useAuthStore.getState().user?.id;
           const ownerId = bill.user_id || (history.some((item) => item.id === bill.id) ? userId : undefined);
           const isOwnedBill = Boolean(userId && ownerId === userId);
@@ -1320,15 +1340,39 @@ export const useBillStore = create<BillState>()(
 
         const user = useAuthStore.getState().user;
         if (!user || !supabase) return;
-        let { data, error } = await supabase.from('bills').select('*').eq('id', billId).maybeSingle();
-        let shareId: string | undefined;
-        if (!data && !error) {
-          const shareResult = await supabase.from('bill_shares').select('id, bill_id, sender_id, bill:bills (*)').eq('id', billId).eq('receiver_id', user.id).maybeSingle();
-          error = shareResult.error;
-          data = shareResult.data?.bill as any;
-          shareId = shareResult.data?.id;
+        if (bill && (bill as BillSession & { summaryOnly?: boolean }).summaryOnly) {
+          const share = sharedBills.find((item) => item.id === bill.id || item.shareId === billId);
+          let fullRow: any = null;
+          if (share?.isSharedBill) {
+            const { data } = await supabase.from('bill_shares').select('id, bill:bills (*)').eq('id', share.shareId || billId).eq('receiver_id', user.id).maybeSingle();
+            fullRow = data?.bill;
+          } else {
+            const { data } = await supabase.from('bills').select('*').eq('id', bill.id).maybeSingle();
+            fullRow = data;
+          }
+          if (!fullRow) return;
+          const raw = fullRow.data || fullRow;
+          const fullBill = { ...(raw as BillSession), id: fullRow.id, user_id: fullRow.user_id,
+            isSharedBill: fullRow.user_id !== user.id, shareId: share?.shareId, sharedBy: share?.sharedBy };
+          set((state) => ({
+            currentBill: fullBill,
+            history: fullBill.isSharedBill ? state.history : withBillInHistory(state, fullBill),
+            sharedBills: fullBill.isSharedBill ? state.sharedBills.map((entry) => entry.id === fullBill.id ? { ...fullBill, shareId: entry.shareId, sharedBy: entry.sharedBy } : entry) : state.sharedBills,
+          }));
+          return;
         }
-        if (error || !data) return;
+        const { data: ownedBill, error: ownedError } = await supabase.from('bills').select('*').eq('id', billId).maybeSingle();
+        if (ownedError) return;
+        let data = ownedBill;
+        let shareId: string | undefined;
+        if (!data) {
+          const { data: shareRow, error: shareError } = await supabase.from('bill_shares')
+            .select('id, bill:bills (*)').eq('id', billId).eq('receiver_id', user.id).maybeSingle();
+          if (shareError) return;
+          data = shareRow?.bill as any;
+          shareId = shareRow?.id;
+        }
+        if (!data) return;
         const raw = (data as any).data || data;
         const loadedBill: BillSession = {
           ...(raw as BillSession),
@@ -1371,8 +1415,8 @@ export const useBillStore = create<BillState>()(
         isFetchingBills = true;
         setSessionSyncTime(BILLS_SYNC_TIME_KEY, user.id);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const normalizeBillRow = (row: any): BillSession => {
-          const raw = row?.data || row?.bill_data || row || {};
+        const normalizeBillRow = (row: any): BillSession & { summaryOnly?: boolean; summaryTotal?: number; summaryMemberCount?: number } => {
+          const raw = row?.summaryOnly ? (row?.summary || {}) : (row?.data || row?.bill_data || row || {});
           return {
             timelineMembers: Array.isArray(raw?.timelineMembers)
               ? raw.timelineMembers
@@ -1384,6 +1428,9 @@ export const useBillStore = create<BillState>()(
             currency: raw?.currency || 'VND',
             category: (raw?.category || row?.category || 'dining') as BillCategory,
             mode: raw?.mode || (Array.isArray(raw?.expenses) && raw.expenses.length > 0 ? 'TIMELINE' : 'SINGLE'),
+            summaryOnly: Boolean(row?.summaryOnly),
+            summaryTotal: Number(raw?.total) || 0,
+            summaryMemberCount: Number(raw?.memberCount) || 0,
             expenses: Array.isArray(raw?.expenses) ? raw.expenses : [],
             items: Array.isArray(raw?.items) ? raw.items : [],
             members: Array.isArray(raw?.members) ? raw.members : [],
@@ -1408,29 +1455,24 @@ export const useBillStore = create<BillState>()(
         try {
           const { data: myBillsData, error: myError } = await supabase
             .from('bills')
-            .select('*')
+            .select('id, user_id, title, created_at, updated_at, summary, transfer_confirmations, settled_transfers')
             .eq('user_id', user.id)
             .order('created_at', { ascending: false });
           if (myError) throw myError;
 
           const { data: sharedData } = await supabase
             .from('bill_shares')
-            .select(`
-              id,
-              sender_id,
-              bill:bills (*),
-              sender:profiles!sender_id (display_name)
-            `)
+            .select('id, bill:bills (id, user_id, title, created_at, updated_at, summary, transfer_confirmations, settled_transfers), sender:profiles!sender_id (display_name)')
             .eq('receiver_id', user.id);
 
           const myBills = (myBillsData || [])
-            .map((b) => ({ ...normalizeBillRow(b), user_id: user.id, isSharedBill: false }))
+            .map((b) => ({ ...normalizeBillRow({ ...b, summaryOnly: true }), user_id: user.id, isSharedBill: false }))
             .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
 
           const sharedBillsList = (sharedData || [])
             .filter((item: any) => Boolean(item.bill))
             .map((item: any) => ({
-              ...normalizeBillRow(item.bill),
+              ...normalizeBillRow({ ...item.bill, summaryOnly: true }),
               user_id: item.bill.user_id,
               shareId: item.id,
               sharedBy: item.sender?.display_name || 'Bạn bè',
@@ -1508,7 +1550,8 @@ export const useBillStore = create<BillState>()(
               id: cleanBill.id,
               user_id: user.id,
               title: cleanBill.title || 'Hóa đơn',
-              data: cleanBill,
+              data: stripBase64Images(cleanBill),
+              summary: createBillSummary(cleanBill),
               transfer_confirmations: cleanBill.transfer_confirmations || {},
               settled_transfers: cleanBill.settled_transfers || [],
               updated_at: new Date().toISOString(),

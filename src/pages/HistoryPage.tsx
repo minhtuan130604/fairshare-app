@@ -47,7 +47,10 @@ function normalizeText(str: string): string {
 /**
  * Tính tổng chi tiêu chuẩn xác cho cả chế độ Hóa đơn lẻ và Tour du lịch
  */
-const calculateBillTotal = (bill: BillSession): number => calculateBillTotals(bill).total;
+const calculateBillTotal = (bill: BillSession): number =>
+  (bill as BillSession & { summaryOnly?: boolean; summaryTotal?: number }).summaryOnly
+    ? Number((bill as BillSession & { summaryTotal?: number }).summaryTotal) || 0
+    : calculateBillTotals(bill).total;
 
 const money = (amount: number, currency?: string) => {
   const curr = currency === 'RUB' ? 'RUB' : 'VND';
@@ -89,7 +92,7 @@ export function HistoryPage({ onBack, onOpenBill }: HistoryPageProps) {
   // 1. Lọc theo danh mục và từ khóa tìm kiếm
   const filteredBills = useMemo(() => {
     const query = normalizeText(searchQuery);
-    return bills.filter((bill) => (bill.items && bill.items.length > 0) || calculateBillTotals(bill).total > 0).filter((bill) => {
+    return bills.filter((bill) => (bill as BillSession & { summaryOnly?: boolean }).summaryOnly || (bill.items && bill.items.length > 0) || calculateBillTotal(bill) > 0).filter((bill) => {
       const matchType = matchesTypeFilter(bill, typeFilter);
       if (!matchType) return false;
       if (!query) return true;
@@ -316,7 +319,9 @@ export function HistoryPage({ onBack, onOpenBill }: HistoryPageProps) {
                 {dateBills.map((bill) => {
                   const activeSource = currentBill && currentBill.id === bill.id ? currentBill : bill;
 
-                  const settlements = calculateSettlements(calculateMemberBreakdowns(activeSource));
+                  const summaryOnly = Boolean((bill as BillSession & { summaryOnly?: boolean }).summaryOnly);
+
+                  const settlements = summaryOnly ? [] : calculateSettlements(calculateMemberBreakdowns(activeSource));
                   const settledList: string[] = Array.isArray(activeSource.settled_transfers)
                     ? activeSource.settled_transfers
                     : [];
@@ -346,7 +351,7 @@ export function HistoryPage({ onBack, onOpenBill }: HistoryPageProps) {
                               {bill.title || t('unnamedBill', locale)}
                             </h3>
 
-                            {isTimelineBill(bill) && (
+                            {!summaryOnly && isTimelineBill(bill) && (
                               <span className="shrink-0 rounded-md bg-emerald-400/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-400">
                                 {t('filterTimeline', locale)}
                               </span>
@@ -372,7 +377,7 @@ export function HistoryPage({ onBack, onOpenBill }: HistoryPageProps) {
                               hour: '2-digit',
                               minute: '2-digit',
                             })}{' '}
-                            · {bill.members.length} {t('membersNav', locale)}
+                            · {summaryOnly ? (bill as BillSession & { summaryMemberCount?: number }).summaryMemberCount || 0 : bill.members?.length || 0} {t('membersNav', locale)}
                             {historyTab === 'shared' && (
                               <>
                                 {' '}· <UserRound className="inline h-3 w-3" />{' '}

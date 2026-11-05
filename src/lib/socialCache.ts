@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 
-export const SOCIAL_CACHE_TTL_MS = 60 * 1000;
+export const SOCIAL_CACHE_TTL_MS = Number.POSITIVE_INFINITY;
 
 type CachedValue<T> = { value: T; cachedAt: number };
 
@@ -18,7 +18,7 @@ export function getCachedFriendships(): Promise<Record<string, any>[]> {
   if (friendshipsRequest) return friendshipsRequest;
   friendshipsRequest = (async () => {
     if (!supabase) return [];
-    const { data, error } = await supabase.from('friendships').select('*').order('created_at', { ascending: false });
+    const { data, error } = await supabase.from('friendships').select('id, user_id, friend_id, friend_email, status, created_at').order('created_at', { ascending: false });
     if (error) throw error;
     const rows = (data ?? []) as Record<string, any>[];
     cachedFriendships = { value: rows, cachedAt: Date.now() };
@@ -33,7 +33,7 @@ export function getCachedFriendProfiles(): Promise<Record<string, any>[]> {
   if (friendProfilesRequest) return friendProfilesRequest;
   friendProfilesRequest = (async () => {
     if (!supabase) return [];
-    const { data, error } = await supabase.from('profiles').select('*');
+    const { data, error } = await supabase.from('profiles').select('id, display_name, avatar_url, bank_name, account_number, account_holder, phone_number, russia_bank, russia_account_holder, russia_qr_url, custom_qr_url');
     if (error) throw error;
     const rows = (data ?? []) as Record<string, any>[];
     cachedFriendProfiles = { value: rows, cachedAt: Date.now() };
