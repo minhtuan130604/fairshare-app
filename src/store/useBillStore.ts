@@ -741,17 +741,25 @@ export const useBillStore = create<BillState>()(
 
         // Nếu chuyển sang TIMELINE và chưa có chặng nào, tạo chặng khởi đầu với đúng người trả trước hiện tại
         if (mode === 'TIMELINE' && (!Array.isArray(currentBill.expenses) || currentBill.expenses.length === 0)) {
-          const members = Array.isArray(currentBill.timelineMembers) && currentBill.timelineMembers.length > 0
+          const timelineMembers = Array.isArray(currentBill.timelineMembers)
             ? currentBill.timelineMembers
             : (Array.isArray(currentBill.members) ? currentBill.members : []);
-          const initialPayerId = currentBill.paidByMemberId || members[0]?.id || '';
+          const existingIds = new Set(
+            (Array.isArray(currentBill.members) ? currentBill.members : []).map((member) => member.id)
+          );
+          const newUniqueMembers = timelineMembers.filter((member) => !existingIds.has(member.id));
+          const updatedMembers = [
+            ...(Array.isArray(currentBill.members) ? currentBill.members : []),
+            ...newUniqueMembers,
+          ];
+          const initialPayerId = currentBill.paidByMemberId || timelineMembers[0]?.id || '';
 
           const firstExpense: BillExpense = {
             id: crypto.randomUUID(),
             time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
             title: currentBill.title || 'Chặng 1',
             payerId: initialPayerId,
-            participantIds: members.map((member) => member.id),
+            participantIds: timelineMembers.map((member) => member.id),
             items: Array.isArray(currentBill.items) ? currentBill.items : [],
             taxPercent: currentBill.taxPercent,
             tipPercent: currentBill.tipPercent,
@@ -759,7 +767,8 @@ export const useBillStore = create<BillState>()(
           const updatedBill = {
             ...currentBill,
             mode,
-            timelineMembers: members,
+            timelineMembers: timelineMembers,
+            members: updatedMembers,
             expenses: [firstExpense],
           };
           set((state) => ({ currentBill: updatedBill, history: withBillInHistory(state, updatedBill) }));

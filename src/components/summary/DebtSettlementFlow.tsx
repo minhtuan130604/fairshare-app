@@ -14,7 +14,7 @@ import {
   ChevronUp
 } from 'lucide-react';
 import { useBillStore } from '../../store/useBillStore';
-import { calculateMemberBreakdowns, calculateSettlements } from '../../utils/calculations';
+import { calculateMemberBreakdowns, calculateTimelineBreakdowns, calculateSettlements } from '../../utils/calculations';
 import { formatCurrency } from '../../utils/formatters';
 import { motion } from 'framer-motion';
 import { useEffect, useMemo, useState } from 'react';
@@ -85,7 +85,7 @@ export function DebtSettlementFlow({ onNavigate }: DebtSettlementFlowProps = {})
   const [isSettlementSectionCollapsed, setIsSettlementSectionCollapsed] = useState(false);
 
 
-  const members: Member[] = [
+  const displayMembers: Member[] = [
     ...(Array.isArray(currentBill?.members) ? currentBill.members : []),
     ...(Array.isArray(currentBill?.timelineMembers) ? currentBill.timelineMembers : []),
   ].filter((member, index, list) => list.findIndex((candidate) => candidate.id === member.id) === index);
@@ -126,7 +126,7 @@ export function DebtSettlementFlow({ onNavigate }: DebtSettlementFlowProps = {})
       return undefined;
     }
 
-    return members.find((member) => {
+    return displayMembers.find((member) => {
       const memberUserId =
         (member as any).userId || (member as any).user_id;
 
@@ -152,7 +152,7 @@ export function DebtSettlementFlow({ onNavigate }: DebtSettlementFlowProps = {})
       );
     });
   }, [
-    members,
+    displayMembers,
     user?.id,
     user?.email,
     user?.user_metadata?.display_name,
@@ -162,8 +162,8 @@ export function DebtSettlementFlow({ onNavigate }: DebtSettlementFlowProps = {})
   ]);
 
   const manuallySelectedMember = useMemo(
-    () => members.find((member) => member.id === manualViewerId),
-    [members, manualViewerId]
+    () => displayMembers.find((member) => member.id === manualViewerId),
+    [displayMembers, manualViewerId]
   );
 
   // Tài khoản đã đăng nhập luôn được ưu tiên hơn ID cũ trong localStorage.
@@ -217,12 +217,15 @@ export function DebtSettlementFlow({ onNavigate }: DebtSettlementFlowProps = {})
     }
   };
 
-  // Tính toán danh sách chuyển khoản.
+  // Tính toán danh sách chuyển khoản theo đúng nguồn dữ liệu của từng chế độ.
   const allSettlements = useMemo(
-    () =>
-      currentBill
-        ? calculateSettlements(calculateMemberBreakdowns(currentBill))
-        : [],
+    () => {
+      if (!currentBill) return [];
+      const breakdowns = currentBill.mode === 'TIMELINE'
+        ? calculateTimelineBreakdowns(currentBill)
+        : calculateMemberBreakdowns(currentBill);
+      return calculateSettlements(breakdowns);
+    },
     [currentBill]
   );
 
@@ -700,11 +703,11 @@ export function DebtSettlementFlow({ onNavigate }: DebtSettlementFlowProps = {})
             {settlements.map((settlement) => {
               const key = keyOf(settlement);
 
-              const from = members.find(
+              const from = displayMembers.find(
                 (m) => m.id === settlement.fromMemberId
               );
 
-              const to = members.find(
+              const to = displayMembers.find(
                 (m) => m.id === settlement.toMemberId
               );
 
