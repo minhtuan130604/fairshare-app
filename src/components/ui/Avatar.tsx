@@ -78,7 +78,7 @@ export function Avatar({
       (memberIdentity?.email && memberIdentity.email.toLowerCase().trim() === user.email?.toLowerCase().trim())),
   );
   const resolvedAvatarUrl = avatarUrl?.trim() || member?.avatar_url?.trim() ||
-    (isCurrentUser && profile?.id === user?.id ? profile.avatar_url?.trim() : '');
+    (isCurrentUser && profile?.id === user?.id ? profile?.avatar_url?.trim() || '' : '');
   const resolvedName = name || member?.name || '';
   const initial = resolvedName.trim() ? resolvedName.trim().charAt(0).toUpperCase() : '?';
   const [imageError, setImageError] = useState(false);

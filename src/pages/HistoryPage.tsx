@@ -78,7 +78,7 @@ export function HistoryPage({ onBack, onOpenBill }: HistoryPageProps) {
     const uniqueBills = history.filter((bill: BillSession, index: number, self: BillSession[]) =>
       Boolean(bill?.id) && index === self.findIndex((candidate) => candidate?.id === bill.id),
     );
-    return uniqueBills.filter((bill) => Boolean(bill.title?.trim()) || calculateBillTotal(bill) > 0).length;
+    return uniqueBills.filter((bill: BillSession) => Boolean(bill.title?.trim()) || calculateBillTotal(bill) > 0).length;
   }, [history]);
   const getSafeMembers = (bill: BillSession) =>
     (Array.isArray(bill.members) ? bill.members : []).filter(
