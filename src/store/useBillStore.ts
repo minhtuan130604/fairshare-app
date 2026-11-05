@@ -3,6 +3,8 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import type { BillSession, BillExpense, BillMode, Member, ExpenseItem, CurrencyCode, MemberGroup, BillCategory } from '../types/bill';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from './useAuthStore';
+import { isValidUUID } from '../utils/isValidUUID';
+
 import { useProfileStore } from './useProfileStore';
 
 interface BillState {
@@ -529,7 +531,11 @@ export const useBillStore = create<BillState>()(
             const senderName = currentProfile?.display_name || currentUser?.user_metadata?.display_name || 'Bạn bè';
             const receiverMemberId = currentBill.paidByMemberId;
 
-            if (receiverMemberId && receiverMemberId !== currentUser?.id) {
+            if (
+              receiverMemberId &&
+              receiverMemberId !== currentUser?.id &&
+              isValidUUID(receiverMemberId)
+            ) {
               const { error: notificationError } = await supabase
                 .from('notifications')
                 .insert({

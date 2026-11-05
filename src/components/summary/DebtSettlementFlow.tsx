@@ -1,8 +1,9 @@
+
+
 import {
   ArrowRight,
   Bell,
   CheckCircle2,
-  Circle,
   QrCode,
   X,
   Copy,
@@ -28,6 +29,8 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { useProfileStore } from '../../store/useProfileStore';
 import { supabase } from '../../lib/supabase';
 import type { Member } from '../../types/bill';
+import { isValidUUID } from '../../utils/isValidUUID';
+
 
 interface DebtSettlementFlowProps {
   onNavigate?: (page: string) => void;
@@ -431,7 +434,8 @@ export function DebtSettlementFlow({ onNavigate }: DebtSettlementFlowProps = {})
 
         if (
           targetReceiverUserId &&
-          targetReceiverUserId !== user?.id
+          targetReceiverUserId !== user?.id &&
+          isValidUUID(targetReceiverUserId)
         ) {
           await supabase.from('notifications').insert({
             user_id: targetReceiverUserId,
@@ -729,23 +733,22 @@ export function DebtSettlementFlow({ onNavigate }: DebtSettlementFlowProps = {})
                 effectiveViewerId === settlement.toMemberId;
 
               const isBillOwner =
-                (currentBill as any).user_id === user?.id ||
-                !currentBill.isSharedBill;
+                (currentBill as any).user_id === user?.id;
 
               const canConfirmReceived = isReceiver || isBillOwner;
 
               return (
                 <li
                   key={key}
-                  className={`rounded-xl border border-line bg-surface-2/60 p-3 transition-colors space-y-2.5 ${
+                  className={`rounded-xl border border-line bg-surface-2/60 p-3 transition-colors space-y-2.5 overflow-hidden ${
                     isPaid ? 'opacity-60' : ''
                   }`}
                 >
 
                   {/* THÔNG TIN NGƯỜI CHUYỂN VÀ NGƯỜI NHẬN */}
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
 
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <div className="flex items-center gap-2 min-w-0 flex-1 basis-full sm:basis-auto">
 
                       {/* NGƯỜI CHUYỂN */}
                       <div className="flex items-center gap-1.5 min-w-0 max-w-[38%] shrink-0">
@@ -755,7 +758,7 @@ export function DebtSettlementFlow({ onNavigate }: DebtSettlementFlowProps = {})
                           className="shrink-0"
                         />
 
-                        <span className="font-medium text-xs sm:text-sm truncate text-ink">
+                        <span className="font-medium text-xs sm:text-sm truncate text-ink min-w-0">
                           {from?.name}
                         </span>
                       </div>
@@ -853,7 +856,7 @@ export function DebtSettlementFlow({ onNavigate }: DebtSettlementFlowProps = {})
                             ? '取消转账确认'
                             : 'Cancel transfer confirmation'
                         }
-                        className="icon-btn shrink-0 p-1 cursor-pointer text-accent hover:opacity-75 transition"
+                        className="text-xs text-accent hover:underline cursor-pointer transition"
                         title={
                           locale === 'vi'
                             ? 'Bấm để hủy xác nhận chuyển tiền'
@@ -864,7 +867,7 @@ export function DebtSettlementFlow({ onNavigate }: DebtSettlementFlowProps = {})
                             : 'Click to cancel transfer confirmation'
                         }
                       >
-                        <CheckCircle2 className="w-5 h-5" />
+                        {locale === 'vi' ? 'Hủy thông báo' : locale === 'ru' ? 'Отменить' : locale === 'zh' ? '取消' : 'Cancel report'}
                       </button>
                     ) : null}
 
@@ -876,12 +879,10 @@ export function DebtSettlementFlow({ onNavigate }: DebtSettlementFlowProps = {})
                           void updateTransferConfirmation(key, 'receiver')
                         }
                         aria-pressed={confirmation.receiverConfirmed}
-                        className={`icon-btn shrink-0 p-1 cursor-pointer transition ${
+                        className={`text-xs px-2 py-1 rounded-md border cursor-pointer transition ${
                           isPaid || confirmation.receiverConfirmed
-                            ? 'text-accent hover:opacity-75'
-                            : confirmation.payerConfirmed
-                            ? 'text-amber-500 hover:text-amber-400 animate-pulse ring-2 ring-amber-500/30 rounded-full'
-                            : 'text-ink-3 hover:text-ink'
+                            ? 'text-accent border-accent/30 hover:bg-accent/10'
+                            : 'text-amber-500 border-amber-500/40 hover:bg-amber-500/10'
                         }`}
                         title={
                           isPaid || confirmation.receiverConfirmed
@@ -907,13 +908,9 @@ export function DebtSettlementFlow({ onNavigate }: DebtSettlementFlowProps = {})
                             : t('confirmReceivedBtn', locale)
                         }
                       >
-                        {isPaid || confirmation.receiverConfirmed ? (
-                          <CheckCircle2 className="w-5 h-5 text-accent" />
-                        ) : confirmation.payerConfirmed ? (
-                          <CheckCircle2 className="w-5 h-5 text-amber-500" />
-                        ) : (
-                          <Circle className="w-5 h-5" />
-                        )}
+                        {isPaid || confirmation.receiverConfirmed
+                          ? (locale === 'vi' ? 'Đã xác nhận · Hủy' : locale === 'ru' ? 'Подтверждено · Отменить' : locale === 'zh' ? '已确认 · 取消' : 'Confirmed · Undo')
+                          : (locale === 'vi' ? 'Xác nhận đã nhận' : locale === 'ru' ? 'Подтвердить получение' : locale === 'zh' ? '确认收款' : 'Confirm received')}
                       </button>
                     ) : isPaid ? (
                       <CheckCircle2 className="w-5 h-5 shrink-0 text-accent" />
@@ -922,7 +919,7 @@ export function DebtSettlementFlow({ onNavigate }: DebtSettlementFlowProps = {})
 
                   {/* THÔNG TIN THANH TOÁN */}
                   {(!isPaid || (isPayer && confirmation.payerConfirmed)) && (
-                    <div className="flex items-center justify-between pt-1 border-t border-line/40 text-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-line/40 text-xs">
 
                       {/* NÚT HIỂN THỊ QR */}
                       {paymentType ? (
@@ -1000,8 +997,7 @@ export function DebtSettlementFlow({ onNavigate }: DebtSettlementFlowProps = {})
                       )}
 
                       {/* NÚT BÁO ĐÃ CHUYỂN TIỀN */}
-                      {(isPayer || !effectiveViewerId) &&
-                        updateTransferConfirmation &&
+                      {isPayer && updateTransferConfirmation &&
                         (
                           !confirmation.receiverConfirmed ||
                           (isPayer && confirmation.receiverConfirmed)
