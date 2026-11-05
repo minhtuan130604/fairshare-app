@@ -1,4 +1,4 @@
-import { Download, Copy, Check, Link2, Users, QrCode, Smartphone } from 'lucide-react';
+import { Download, Copy, Check, Link2, Users, QrCode, Smartphone, Share2 } from 'lucide-react';
 import { useBillStore } from '../../store/useBillStore';
 import { useAuthStore } from '../../store/useAuthStore';
 import { calculateMemberBreakdowns, calculateSettlements } from '../../utils/calculations';
@@ -214,19 +214,27 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
         </button>
       </div>
 
-      <button onClick={handleShareURL} className="btn btn-secondary w-full cursor-pointer">
-        {urlCopied ? (
-          <>
-            <Check className="w-4 h-4 text-accent" />
-            {t('copiedLink', locale)}
-          </>
-        ) : (
-          <>
-            <Link2 className="w-4 h-4" />
-            {t('copyShareLink', locale)}
-          </>
+      <div className="flex gap-3">
+        <button type="button" onClick={handleCopyURL} className="btn btn-secondary flex-1 cursor-pointer">
+          {urlCopied ? (
+            <>
+              <Check className="w-4 h-4 text-accent" />
+              {t('copiedLink', locale)}
+            </>
+          ) : (
+            <>
+              <Link2 className="w-4 h-4" />
+              {t('copyShareLink', locale)}
+            </>
+          )}
+        </button>
+        {typeof navigator.share === 'function' && (
+          <button type="button" onClick={handleShareURL} className="btn btn-primary flex-1 cursor-pointer">
+            <Share2 className="w-4 h-4" />
+            {t('shareBill', locale)}
+          </button>
         )}
-      </button>
+      </div>
       <p className="text-xs text-ink-3 text-center">{t('shareLinkDesc', locale)}</p>
     </div>
   );
