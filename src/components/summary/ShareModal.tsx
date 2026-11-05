@@ -1,5 +1,6 @@
 
 import { Download, Copy, Check, Users, QrCode, Smartphone, Share2 } from 'lucide-react';
+import { exportBillToCsv } from '../../utils/exportCsv';
 import { useBillStore } from '../../store/useBillStore';
 import { useAuthStore } from '../../store/useAuthStore';
 import { calculateMemberBreakdowns, calculateSettlements } from '../../utils/calculations';
@@ -72,7 +73,7 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
 
   const generateTextSummary = () => {
     let text = `📄 ${currentBill.title}\n`;
-    text += `📅 ${formatDate(currentBill.date)}\n`;
+    text += `📅 ${formatDate(currentBill.date, locale)}\n`;
     text += `━━━━━━━━━━━━━━━━━━━━\n\n`;
 
     text += `🍽️ ${t('itemsNav', locale).toUpperCase()}:\n`;
@@ -158,6 +159,10 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
     }
   };
 
+  const handleExportCsv = () => {
+    exportBillToCsv(currentBill, locale);
+  };
+
   const handleExportImage = async () => {
     if (!receiptRef.current) return;
 
@@ -193,7 +198,11 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
       )}
 
       <div className="flex gap-3">
-        <button onClick={handleExportImage} disabled={exporting} className="btn btn-primary flex-1 cursor-pointer">
+        <button type="button" onClick={handleExportCsv} className="btn btn-secondary flex-1 cursor-pointer">
+          <Download className="w-4 h-4" />
+          {t('exportCsv', locale)}
+        </button>
+        <button type="button" onClick={handleExportImage} disabled={exporting} className="btn btn-primary flex-1 cursor-pointer">
           <Download className="w-4 h-4" />
           {exporting ? t('exporting', locale) : t('downloadPng', locale)}
         </button>
@@ -338,7 +347,7 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
 
           <div className="text-center border-b border-dashed border-line pb-4">
             <div className="text-xl font-bold break-words">{currentBill.title}</div>
-            <div className="text-ink-3 text-xs mt-1">{formatDate(currentBill.date)}</div>
+            <div className="text-ink-3 text-xs mt-1">{formatDate(currentBill.date, locale)}</div>
           </div>
 
           {currentBill.mode === 'TIMELINE' ? (
