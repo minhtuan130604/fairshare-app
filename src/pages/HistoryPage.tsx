@@ -47,13 +47,18 @@ function normalizeText(str: string): string {
 /**
  * Tính tổng chi tiêu chuẩn xác cho cả chế độ Hóa đơn lẻ và Tour du lịch
  */
-const calculateBillTotal = (bill: BillSession): number =>
-  (bill as BillSession & { summaryOnly?: boolean; summaryTotal?: number }).summaryOnly
+const calculateBillTotal = (bill: BillSession): number => {
+  const summary = (bill as BillSession & { summary?: { total?: number } }).summary;
+  const totals = (bill as BillSession & { totals?: { total?: number } }).totals;
+  const total = summary?.total ?? totals?.total;
+  if (total != null) return Number(total) || 0;
+  return (bill as BillSession & { summaryOnly?: boolean; summaryTotal?: number }).summaryOnly
     ? Number((bill as BillSession & { summaryTotal?: number }).summaryTotal) || 0
     : calculateBillTotals(bill).total;
+};
 
 const money = (amount: number, currency?: string) => {
-  const curr = currency === 'RUB' ? 'RUB' : 'VND';
+  const curr = currency === 'RUB' ? 'RUB' : currency === 'VND' ? 'VND' : 'VND';
   try {
     return new Intl.NumberFormat(undefined, {
       style: 'currency',
@@ -377,7 +382,7 @@ export function HistoryPage({ onBack, onOpenBill }: HistoryPageProps) {
                               hour: '2-digit',
                               minute: '2-digit',
                             })}{' '}
-                            · {summaryOnly ? (bill as BillSession & { summaryMemberCount?: number }).summaryMemberCount || 0 : bill.members?.length || 0} {t('membersNav', locale)}
+                            · {(bill as BillSession & { summary?: { memberCount?: number }; summaryMemberCount?: number }).summary?.memberCount ?? (bill as BillSession & { summaryMemberCount?: number }).summaryMemberCount ?? bill.members?.length ?? 0} {t('membersNav', locale)}
                             {historyTab === 'shared' && (
                               <>
                                 {' '}· <UserRound className="inline h-3 w-3" />{' '}
@@ -391,7 +396,7 @@ export function HistoryPage({ onBack, onOpenBill }: HistoryPageProps) {
                       {/* Khối bên phải: Tổng tiền, Nút xóa & Mũi tên */}
                       <div className="flex shrink-0 items-center gap-2 sm:gap-3">
                         <span className="num font-mono font-bold text-xs sm:text-sm text-accent">
-                          {money(calculateBillTotal(bill), bill.currency)}
+                          {money(calculateBillTotal(bill), (bill as BillSession & { summary?: { currency?: string } }).summary?.currency ?? bill.currency ?? 'VND')}
                         </span>
 
                         <button

@@ -1415,54 +1415,58 @@ export const useBillStore = create<BillState>()(
         isFetchingBills = true;
         setSessionSyncTime(BILLS_SYNC_TIME_KEY, user.id);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const normalizeBillRow = (row: any): BillSession & { summaryOnly?: boolean; summaryTotal?: number; summaryMemberCount?: number } => {
-          const raw = row?.summaryOnly ? (row?.summary || {}) : (row?.data || row?.bill_data || row || {});
+        const normalizeBillRow = (row: any): BillSession & { summaryOnly?: boolean; summaryTotal?: number; summaryMemberCount?: number; summary?: { title: string; currency: string; total: number; memberCount: number; isSettled: boolean } } => {
+          const raw = row?.data || row?.bill_data || {};
+          const source = row?.summaryOnly ? (row?.summary || {}) : raw;
+          const billCurrency = source?.currency || row?.currency || raw?.currency || 'VND';
+          const members = row?.members ?? raw?.members ?? source?.members;
+          const expenses = row?.expenses ?? raw?.expenses ?? source?.expenses;
+          const summaryTotal = Number(source?.total ?? row?.totals?.total ?? raw?.totals?.total ?? 0);
+          const expenseTotal = Array.isArray(expenses) ? expenses.reduce((sum: number, expense: any) => sum + Number(expense?.total ?? expense?.amount ?? 0), 0) : 0;
+          const billTotal = summaryTotal || expenseTotal;
+          const memberCount = Number(source?.memberCount ?? (Array.isArray(members) ? members.length : 0));
+          const summary = row?.summary && row.summary.total != null
+            ? row.summary
+            : { title: row?.title || source?.title || 'Hóa đơn', currency: billCurrency, total: billTotal, memberCount, isSettled: false };
           return {
-            timelineMembers: Array.isArray(raw?.timelineMembers)
-              ? raw.timelineMembers
-              : (Array.isArray(raw?.members) ? raw.members : []),
-            id: row?.id || raw?.id || generateId(),
-            user_id: row?.user_id || raw?.user_id,
-            title: raw?.title || row?.title || 'Hóa đơn',
-            date: raw?.date || row?.created_at || new Date().toISOString(),
-            currency: raw?.currency || 'VND',
-            category: (raw?.category || row?.category || 'dining') as BillCategory,
-            mode: raw?.mode || (Array.isArray(raw?.expenses) && raw.expenses.length > 0 ? 'TIMELINE' : 'SINGLE'),
+            timelineMembers: Array.isArray(source?.timelineMembers) ? source.timelineMembers : (Array.isArray(members) ? members : []),
+            id: row?.id || source?.id || generateId(),
+            user_id: row?.user_id || source?.user_id,
+            title: source?.title || row?.title || 'Hóa đơn',
+            date: source?.date || row?.created_at || new Date().toISOString(),
+            currency: summary.currency || billCurrency,
+            category: (source?.category || row?.category || 'dining') as BillCategory,
+            mode: source?.mode || (Array.isArray(expenses) && expenses.length > 0 ? 'TIMELINE' : 'SINGLE'),
             summaryOnly: Boolean(row?.summaryOnly),
-            summaryTotal: Number(raw?.total) || 0,
-            summaryMemberCount: Number(raw?.memberCount) || 0,
-            expenses: Array.isArray(raw?.expenses) ? raw.expenses : [],
-            items: Array.isArray(raw?.items) ? raw.items : [],
-            members: Array.isArray(raw?.members) ? raw.members : [],
-            taxPercent: typeof raw?.taxPercent === 'number' ? raw.taxPercent : 0,
-            tipPercent: typeof raw?.tipPercent === 'number' ? raw.tipPercent : 0,
-            paidByMemberId: raw?.paidByMemberId || '',
-            splitMode: raw?.splitMode || 'ITEMIZED',
-            isSharedBill: Boolean(raw?.isSharedBill),
-            shareId: raw?.shareId,
-            sharedBy: raw?.sharedBy,
-            transfer_confirmations:
-              row?.transfer_confirmations ??
-              raw?.transfer_confirmations ??
-              {},
-            settled_transfers:
-              row?.settled_transfers ??
-              raw?.settled_transfers ??
-              [],
+            summaryTotal: Number(summary.total) || 0,
+            summaryMemberCount: Number(summary.memberCount) || 0,
+            summary,
+            expenses: Array.isArray(expenses) ? expenses : [],
+            items: Array.isArray(source?.items) ? source.items : [],
+            members: Array.isArray(members) ? members : [],
+            taxPercent: typeof source?.taxPercent === 'number' ? source.taxPercent : 0,
+            tipPercent: typeof source?.tipPercent === 'number' ? source.tipPercent : 0,
+            paidByMemberId: source?.paidByMemberId || '',
+            splitMode: source?.splitMode || 'ITEMIZED',
+            isSharedBill: Boolean(source?.isSharedBill),
+            shareId: source?.shareId,
+            sharedBy: source?.sharedBy,
+            transfer_confirmations: row?.transfer_confirmations ?? source?.transfer_confirmations ?? {},
+            settled_transfers: row?.settled_transfers ?? source?.settled_transfers ?? [],
           };
         };
 
         try {
           const { data: myBillsData, error: myError } = await supabase
             .from('bills')
-            .select('id, user_id, title, created_at, updated_at, summary, transfer_confirmations, settled_transfers')
+            .select('id, user_id, title, created_at, updated_at, summary, data->currency, data->totals, data->members, data->expenses, transfer_confirmations, settled_transfers')
             .eq('user_id', user.id)
             .order('created_at', { ascending: false });
           if (myError) throw myError;
 
           const { data: sharedData } = await supabase
             .from('bill_shares')
-            .select('id, bill:bills (id, user_id, title, created_at, updated_at, summary, transfer_confirmations, settled_transfers), sender:profiles!sender_id (display_name)')
+            .select('id, bill:bills (id, user_id, title, created_at, updated_at, summary, data->currency, data->totals, data->members, data->expenses, transfer_confirmations, settled_transfers), sender:profiles!sender_id (display_name)')
             .eq('receiver_id', user.id);
 
           const myBills = (myBillsData || [])
