@@ -132,9 +132,21 @@ const createEmptyBill = (): BillSession => ({
   timelineMembers: [],
 });
 
+const isValidHistoryBill = (bill: BillSession): boolean => {
+  const normalizedTitle = bill.title?.trim().toLowerCase();
+  const hasTitle = Boolean(normalizedTitle && normalizedTitle !== 'hóa đơn' && normalizedTitle !== 'hoa don');
+  const hasValidTotal = createBillSummary(bill).total > 0;
+  return Boolean(bill.id && (hasTitle || hasValidTotal));
+};
+
+const normalizeHistoryBills = (bills: BillSession[]): BillSession[] => {
+  const unique = bills.filter((bill, index, self) => Boolean(bill?.id) && index === self.findIndex((candidate) => candidate?.id === bill.id));
+  return unique.filter(isValidHistoryBill);
+};
+
 const withBillInHistory = (state: Pick<BillState, 'history'>, bill: BillSession): BillSession[] => {
   if (!Array.isArray(state.history)) return [];
-  return state.history.map((savedBill) => (savedBill.id === bill.id ? bill : savedBill));
+  return normalizeHistoryBills([bill, ...state.history.filter((savedBill) => savedBill.id !== bill.id)]);
 };
 
 
@@ -1428,8 +1440,8 @@ export const useBillStore = create<BillState>()(
             .eq('receiver_id', user.id);
           if (sharedError) throw sharedError;
 
-          const myBills = (myBillsData || [])
-            .map((row) => ({ ...normalizeBillRow(row), user_id: user.id, isSharedBill: false }))
+          const myBills = normalizeHistoryBills((myBillsData || [])
+            .map((row) => ({ ...normalizeBillRow(row), user_id: user.id, isSharedBill: false })))
             .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
 
           const sharedBillsList = (sharedData || [])

@@ -74,6 +74,12 @@ export function HistoryPage({ onBack, onOpenBill }: HistoryPageProps) {
   const [isManualSyncing, setIsManualSyncing] = useState(false);
 
   const bills: BillSession[] = historyTab === 'my' ? history : sharedBills;
+  const myBillsCount = useMemo(() => {
+    const uniqueBills = history.filter((bill: BillSession, index: number, self: BillSession[]) =>
+      Boolean(bill?.id) && index === self.findIndex((candidate) => candidate?.id === bill.id),
+    );
+    return uniqueBills.filter((bill) => Boolean(bill.title?.trim()) || calculateBillTotal(bill) > 0).length;
+  }, [history]);
   const getSafeMembers = (bill: BillSession) =>
     (Array.isArray(bill.members) ? bill.members : []).filter(
       (member): member is NonNullable<typeof member> => Boolean(member && member.id)
@@ -217,7 +223,7 @@ export function HistoryPage({ onBack, onOpenBill }: HistoryPageProps) {
             historyTab === 'my' ? 'border-accent text-accent' : 'border-transparent text-ink-2'
           }`}
         >
-          {t('myBillsTab', locale)} ({history.length})
+          {t('myBillsTab', locale)} ({myBillsCount})
         </button>
         <button
           type="button"

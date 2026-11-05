@@ -13,6 +13,7 @@ export function useAutoSaveBill(debounceMs = 600) {
   const hideSavedTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const lastSavedJsonRef = useRef<string>('');
   const lastBillIdRef = useRef<string>('');
+  const initializedBillIdRef = useRef<string>('');
 
   useEffect(() => {
     // 1. Không lưu nếu chưa đăng nhập hoặc không có hóa đơn
@@ -63,7 +64,15 @@ export function useAutoSaveBill(debounceMs = 600) {
     if (lastBillIdRef.current !== currentBill.id) {
       lastBillIdRef.current = currentBill.id;
       lastSavedJsonRef.current = currentJson;
+      initializedBillIdRef.current = currentBill.id;
       setStatus('idle');
+      return;
+    }
+
+    // Không tự lưu ở lượt render đầu tiên của bill đã hydrate từ local/cloud.
+    if (initializedBillIdRef.current !== currentBill.id) {
+      initializedBillIdRef.current = currentBill.id;
+      lastSavedJsonRef.current = currentJson;
       return;
     }
 

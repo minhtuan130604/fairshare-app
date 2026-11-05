@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import type { Member } from '../../types/bill';
+import { useAuthStore } from '../../store/useAuthStore';
+import { useProfileStore } from '../../store/useProfileStore';
 
 export interface AvatarProps {
   member?: Member | null;
@@ -68,7 +70,15 @@ export function Avatar({
   };
 
   const currentSize = sizeClasses[size];
-  const resolvedAvatarUrl = avatarUrl?.trim() || member?.avatar_url?.trim();
+  const user = useAuthStore((state) => state.user);
+  const profile = useProfileStore((state) => state.profile);
+  const memberIdentity = member as (Member & { userId?: string; user_id?: string }) | undefined;
+  const isCurrentUser = Boolean(
+    user && (memberIdentity?.id === user.id || memberIdentity?.userId === user.id || memberIdentity?.user_id === user.id ||
+      (memberIdentity?.email && memberIdentity.email.toLowerCase().trim() === user.email?.toLowerCase().trim())),
+  );
+  const resolvedAvatarUrl = avatarUrl?.trim() || member?.avatar_url?.trim() ||
+    (isCurrentUser && profile?.id === user?.id ? profile.avatar_url?.trim() : '');
   const resolvedName = name || member?.name || '';
   const initial = resolvedName.trim() ? resolvedName.trim().charAt(0).toUpperCase() : '?';
   const [imageError, setImageError] = useState(false);
