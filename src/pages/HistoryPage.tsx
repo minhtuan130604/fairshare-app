@@ -82,6 +82,10 @@ export function HistoryPage({ onBack, onOpenBill }: HistoryPageProps) {
   const [isManualSyncing, setIsManualSyncing] = useState(false);
 
   const bills: BillSession[] = historyTab === 'my' ? history : sharedBills;
+  const getSafeMembers = (bill: BillSession) =>
+    (Array.isArray(bill.members) ? bill.members : []).filter(
+      (member): member is NonNullable<typeof member> => Boolean(member && member.id)
+    );
 
   // 1. Lọc theo danh mục và từ khóa tìm kiếm
   const filteredBills = useMemo(() => {
@@ -318,7 +322,9 @@ export function HistoryPage({ onBack, onOpenBill }: HistoryPageProps) {
 
                   const summaryOnly = Boolean((bill as BillSession & { summaryOnly?: boolean }).summaryOnly);
 
-                  const settlements = summaryOnly ? [] : calculateSettlements(calculateMemberBreakdowns(activeSource));
+                  const safeMembers = getSafeMembers(activeSource);
+                  const safeSource = { ...activeSource, members: safeMembers };
+                  const settlements = summaryOnly ? [] : calculateSettlements(calculateMemberBreakdowns(safeSource));
                   const settledList: string[] = Array.isArray(activeSource.settled_transfers)
                     ? activeSource.settled_transfers
                     : [];
@@ -374,7 +380,7 @@ export function HistoryPage({ onBack, onOpenBill }: HistoryPageProps) {
                               hour: '2-digit',
                               minute: '2-digit',
                             })}{' '}
-                            · {(bill as BillSession & { summary?: { memberCount?: number }; summaryMemberCount?: number }).summary?.memberCount ?? (bill as BillSession & { summaryMemberCount?: number }).summaryMemberCount ?? bill.members?.length ?? 0} {t('membersNav', locale)}
+                            · {(bill as BillSession & { summary?: { memberCount?: number }; summaryMemberCount?: number }).summary?.memberCount ?? (bill as BillSession & { summaryMemberCount?: number }).summaryMemberCount ?? getSafeMembers(bill).length ?? 1} {t('membersNav', locale)}
                             {historyTab === 'shared' && (
                               <>
                                 {' '}· <UserRound className="inline h-3 w-3" />{' '}

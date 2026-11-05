@@ -1421,7 +1421,15 @@ export const useBillStore = create<BillState>()(
             const title = summary.title || row?.title || 'Hóa đơn';
             const currency = summary.currency || 'VND';
             const total = Number(summary.total || 0);
-            const memberCount = Number(summary.memberCount || 1);
+            const memberCount = Math.max(Number(summary.memberCount || 1), 1);
+            const members: Member[] = Array.isArray(row?.members)
+              ? row.members.filter((member: unknown): member is Member =>
+                  Boolean(member && typeof member === 'object' && 'id' in member && 'name' in member)
+                )
+              : Array.from({ length: memberCount }, (_, index) => ({
+                  id: `placeholder-member-${index}`,
+                  name: `Member ${index + 1}`,
+                }));
             return {
               id: row?.id || generateId(),
               user_id: row?.user_id,
@@ -1438,7 +1446,7 @@ export const useBillStore = create<BillState>()(
               mode: 'SINGLE',
               expenses: [],
               items: [],
-              members: Array(memberCount).fill(null) as unknown as Member[],
+              members,
               taxPercent: 0,
               tipPercent: 0,
               paidByMemberId: '',
