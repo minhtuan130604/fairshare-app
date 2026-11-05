@@ -13,7 +13,10 @@ export function LiveReceiptCard() {
 
   if (!currentBill) return null;
 
-  const members = Array.isArray(currentBill.members) ? currentBill.members : [];
+  const members = [
+    ...(Array.isArray(currentBill.members) ? currentBill.members : []),
+    ...(Array.isArray(currentBill.timelineMembers) ? currentBill.timelineMembers : []),
+  ].filter((member, index, list) => list.findIndex((candidate) => candidate.id === member.id) === index);
   const currency = currentBill.currency || 'VND';
   const isReadOnly = isBillReadOnly(currentBill, user?.id);
   const isTimeline = currentBill.mode === 'TIMELINE';

@@ -51,6 +51,17 @@ function numberCell(value: string | number): string {
   return `<td class="number-cell">${escapeHtml(value)}</td>`;
 }
 
+const formatExcelNumber = (num: number): string => {
+  if (typeof num !== 'number' || Number.isNaN(num)) return '0';
+  if (Number.isInteger(num)) return num.toLocaleString('en-US');
+  return num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+};
+
+const formatExcelQty = (qty: number): string => {
+  if (typeof qty !== 'number' || Number.isNaN(qty)) return '1';
+  return Number.isInteger(qty) ? qty.toString() : qty.toFixed(2);
+};
+
 function headerCell(value: string): string {
   return `<th>${escapeHtml(value)}</th>`;
 }
@@ -84,7 +95,7 @@ export function exportBillToCsv(bill: BillSession, locale: string): void {
     `<tr>${textCell(dict.billTitle)}${textCell(bill.title || dict.billTitle)}</tr>`,
     `<tr>${textCell(dict.date)}${textCell(formattedDate)}</tr>`,
     `<tr>${textCell(dict.currency)}${textCell(bill.currency)}</tr>`,
-    `<tr>${textCell(dict.grandTotal)}${numberCell(totals.total)}</tr>`,
+    `<tr>${textCell(dict.grandTotal)}${numberCell(formatExcelNumber(totals.total))}</tr>`,
   ].join('');
 
   let detailRows = '';
@@ -98,27 +109,27 @@ export function exportBillToCsv(bill: BillSession, locale: string): void {
         const price = Number(item.price) || 0;
         const quantity = Number(item.quantity) || 0;
         const itemParticipants = item.assignedMemberIds?.length ? item.assignedMemberIds : expense.participantIds;
-        detailRows += `<tr>${textCell(item.name)}${numberCell(price)}${numberCell(quantity)}${numberCell(price * quantity)}${textCell(memberNames(itemParticipants, members) || participantNames || dict.noAssignment)}</tr>`;
+        detailRows += `<tr>${textCell(item.name)}${numberCell(formatExcelNumber(price))}${numberCell(formatExcelQty(quantity))}${numberCell(formatExcelNumber(price * quantity))}${textCell(memberNames(itemParticipants, members) || participantNames || dict.noAssignment)}</tr>`;
       }
       const expenseSubtotal = (expense.items || []).reduce(
         (sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0),
         0,
       );
-      detailRows += `<tr class="subtotal-row">${textCell(dict.subtotal)}${textCell('')}${textCell('')}${numberCell(expenseSubtotal)}${textCell('')}</tr>`;
+      detailRows += `<tr class="subtotal-row">${textCell(dict.subtotal)}${textCell('')}${textCell('')}${numberCell(formatExcelNumber(expenseSubtotal))}${textCell('')}</tr>`;
     }
   } else {
     detailRows += `<tr>${headerCell(dict.item)}${headerCell(dict.unitPrice)}${headerCell(dict.quantity)}${headerCell(dict.total)}${headerCell(dict.participants)}</tr>`;
     for (const item of bill.items || []) {
       const price = Number(item.price) || 0;
       const quantity = Number(item.quantity) || 0;
-      detailRows += `<tr>${textCell(item.name)}${numberCell(price)}${numberCell(quantity)}${numberCell(price * quantity)}${textCell(memberNames(item.assignedMemberIds, members) || dict.noAssignment)}</tr>`;
+      detailRows += `<tr>${textCell(item.name)}${numberCell(formatExcelNumber(price))}${numberCell(formatExcelQty(quantity))}${numberCell(formatExcelNumber(price * quantity))}${textCell(memberNames(item.assignedMemberIds, members) || dict.noAssignment)}</tr>`;
     }
   }
 
   const settlements = calculateSettlements(calculateMemberBreakdowns(bill));
   let settlementTable = '';
   if (settlements.length > 0) {
-    const settlementRows = settlements.map((settlement) => `<tr>${textCell(members.find((member) => member.id === settlement.fromMemberId)?.name || '')}${textCell(members.find((member) => member.id === settlement.toMemberId)?.name || '')}${numberCell(settlement.amount)}</tr>`).join('');
+    const settlementRows = settlements.map((settlement) => `<tr>${textCell(members.find((member) => member.id === settlement.fromMemberId)?.name || '')}${textCell(members.find((member) => member.id === settlement.toMemberId)?.name || '')}${numberCell(formatExcelNumber(settlement.amount))}</tr>`).join('');
     settlementTable = `<h2>${escapeHtml(dict.settlements)}</h2><table><tr>${headerCell(dict.sender)}${headerCell(dict.receiver)}${headerCell(dict.amount)}</tr>${settlementRows}</table>`;
   }
 
@@ -132,7 +143,7 @@ export function exportBillToCsv(bill: BillSession, locale: string): void {
     td { border: 1px solid #e5e7eb; padding: 6px 10px; }
     h1 { font-family: Arial, sans-serif; font-size: 18px; color: #111827; }
     h2 { font-family: Arial, sans-serif; font-size: 14px; color: #111827; }
-    .number-cell { text-align: right; mso-number-format: "#,##0.00"; }
+    .number-cell { text-align: right; mso-number-format: "#,##0.##"; }
     .text-cell { text-align: left; }
   </style>
 </head>

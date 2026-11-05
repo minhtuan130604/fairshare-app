@@ -1,4 +1,6 @@
 
+
+
 import { Download, Check, Users, QrCode, Smartphone, Share2 } from 'lucide-react';
 import { exportBillToCsv } from '../../utils/exportCsv';
 import { useBillStore } from '../../store/useBillStore';
@@ -37,6 +39,10 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
   const breakdowns = calculateMemberBreakdowns(currentBill);
   const settlements = calculateSettlements(breakdowns);
   const expenses = currentBill.mode === 'TIMELINE' && Array.isArray(currentBill.expenses) ? currentBill.expenses : [];
+  const members = [
+    ...(Array.isArray(currentBill.members) ? currentBill.members : []),
+    ...(Array.isArray(currentBill.timelineMembers) ? currentBill.timelineMembers : []),
+  ].filter((member, index, list) => list.findIndex((candidate) => candidate.id === member.id) === index);
   
   const billSubtotal = currentBill.mode === 'TIMELINE'
     ? expenses.reduce((sum, expense) => sum + expense.items.reduce((subtotal, item) => subtotal + item.price * item.quantity, 0), 0)
@@ -59,7 +65,7 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
   const grandTotal = billSubtotal + totalTax + totalTip;
   const payableBreakdowns = breakdowns.filter((breakdown) => breakdown.totalOwed > 0);
   const activeBreakdown = payableBreakdowns.find((breakdown) => breakdown.memberId === selectedMemberId) ?? payableBreakdowns[0];
-  const activeMember = currentBill.members.find((member) => member.id === activeBreakdown?.memberId);
+  const activeMember = members.find((member) => member.id === activeBreakdown?.memberId);
   const personAmount = activeBreakdown?.totalOwed ?? 0;
 
   const hasVietQrAccount = Boolean(activeMember?.bank_name && activeMember?.account_number);
@@ -179,7 +185,7 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
           {payableBreakdowns.length > 0 && (
             <div className="flex gap-2 overflow-x-auto pb-1">
               {payableBreakdowns.map((breakdown) => {
-                const member = currentBill.members.find((item) => item.id === breakdown.memberId);
+                const member = members.find((item) => item.id === breakdown.memberId);
                 const selected = member?.id === activeMember?.id;
                 return (
                   <button
@@ -286,7 +292,7 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
                     </span>
                   </div>
                   <div className="mt-1 text-[11px] text-ink-3">
-                    {t('payerLabel', locale)}: {currentBill.members.find((member) => member.id === expense.payerId)?.name || t('noAssignment', locale)}
+                    {t('payerLabel', locale)}: {members.find((member) => member.id === expense.payerId)?.name || t('noAssignment', locale)}
                   </div>
                   <div className="mt-2 space-y-1">
                     {expense.items.map((item, itemIndex) => (
@@ -372,7 +378,7 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
             <div className="border-t border-dashed border-line pt-3 space-y-1">
               <div className="font-semibold mb-1">{t('eachPersonPays', locale)}</div>
               {breakdowns.map((b) => {
-                const member = currentBill.members.find((m) => m.id === b.memberId);
+                const member = members.find((m) => m.id === b.memberId);
                 return (
                   <div key={b.memberId} className="flex justify-between">
                     <span>{member?.name}</span>
@@ -387,8 +393,8 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
             <div className="border-t border-dashed border-line pt-3 space-y-1">
               <div className="font-semibold mb-1">{t('settlementTitle', locale)}</div>
               {settlements.map((s, idx) => {
-                const from = currentBill.members.find((m) => m.id === s.fromMemberId);
-                const to = currentBill.members.find((m) => m.id === s.toMemberId);
+                const from = members.find((m) => m.id === s.fromMemberId);
+                const to = members.find((m) => m.id === s.toMemberId);
                 return (
                   <div key={idx} className="flex justify-between gap-3">
                     <span>{from?.name} → {to?.name}</span>

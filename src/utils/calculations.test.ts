@@ -181,6 +181,7 @@ describe('Bill Calculations', () => {
       ],
     };
     const breakdowns = calculateMemberBreakdowns(timelineBill);
+    expect(breakdowns).toHaveLength(4);
     expect(breakdowns.find((b) => b.memberId === 'm1')?.netBalance).toBeCloseTo(80000, 5);
     expect(breakdowns.find((b) => b.memberId === 'm2')?.netBalance).toBeCloseTo(-100000, 5);
     expect(breakdowns.find((b) => b.memberId === 'm3')?.netBalance).toBeCloseTo(20000, 5);
@@ -188,5 +189,29 @@ describe('Bill Calculations', () => {
       { fromMemberId: 'm2', toMemberId: 'm1', amount: 80000 },
       { fromMemberId: 'm2', toMemberId: 'm3', amount: 20000 },
     ]);
+  });
+
+  it('merges main and timeline members for timeline breakdowns', () => {
+    const timelineBill: BillSession = {
+      ...mockBill,
+      mode: 'TIMELINE',
+      members: mockBill.members.slice(0, 2),
+      timelineMembers: mockBill.members,
+      items: [],
+      expenses: [{
+        id: 'timeline-expense',
+        time: '12:00',
+        title: 'Group lunch',
+        payerId: 'm1',
+        participantIds: ['m1', 'm2', 'm3', 'm4'],
+        items: [{ id: 'timeline-item', name: 'Lunch', price: 400, quantity: 1, assignedMemberIds: [] }],
+        taxPercent: 0,
+        tipPercent: 0,
+      }],
+    };
+
+    const breakdowns = calculateMemberBreakdowns(timelineBill);
+    expect(breakdowns.map((breakdown) => breakdown.memberId)).toEqual(['m1', 'm2', 'm3', 'm4']);
+    expect(calculateSettlements(breakdowns)).toHaveLength(3);
   });
 });

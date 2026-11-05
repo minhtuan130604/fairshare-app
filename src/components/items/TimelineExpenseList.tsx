@@ -239,45 +239,32 @@ function ExpenseCard({ expense, index }: { expense: BillExpense; index: number }
       <div className="absolute -left-[9px] top-6 h-4 w-4 rounded-full border-4 border-[#08100e] bg-emerald-400" aria-hidden="true" />
       
       {/* Header chặng */}
-      <div className="flex flex-wrap items-start gap-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className="mt-1.5 text-neutral-400 hover:text-white transition cursor-pointer"
+          className="shrink-0 text-neutral-400 transition hover:text-white cursor-pointer"
           title={isCollapsed ? 'Mở rộng chặng' : 'Thu gọn chặng'}
         >
           {isCollapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
         </button>
-
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-          <Clock3 className="h-4 w-4 shrink-0 text-emerald-400" />
-          <input
-            type="time"
-            value={expense.time}
-            onChange={(e) => updateExpense(expense.id, { time: e.target.value })}
-            disabled={isReadOnly}
-            aria-label={`${t('timeLabel', locale)} ${index + 1}`}
-            className="field h-9 w-[6.5rem] px-2 text-sm num"
-          />
-          <input
-            value={expense.title}
-            onChange={(e) => updateExpense(expense.id, { title: e.target.value })}
-            disabled={isReadOnly}
-            placeholder={t('expenseTitlePlaceholder', locale)}
-            aria-label="Tên chặng"
-            className="field h-9 min-w-[8rem] min-w-0 flex-1 px-2 text-sm font-semibold"
-          />
-          <button
-            type="button"
-            onClick={() => setIsScanOpen(true)}
-            disabled={isReadOnly}
-            className="btn btn-secondary h-9 shrink-0 px-2.5 text-xs cursor-pointer"
-          >
-            <ScanLine className="h-3.5 w-3.5" />
-            {t('scanBill', locale)}
-          </button>
-        </div>
-
+        <Clock3 className="h-4 w-4 shrink-0 text-emerald-400" />
+        <input
+          type="time"
+          value={expense.time}
+          onChange={(e) => updateExpense(expense.id, { time: e.target.value })}
+          disabled={isReadOnly}
+          aria-label={`${t('timeLabel', locale)} ${index + 1}`}
+          className="field h-9 w-[6.5rem] shrink-0 px-2 text-sm num"
+        />
+        <input
+          value={expense.title}
+          onChange={(e) => updateExpense(expense.id, { title: e.target.value })}
+          disabled={isReadOnly}
+          placeholder={t('expenseTitlePlaceholder', locale)}
+          aria-label="Tên chặng"
+          className="field h-9 min-w-0 flex-1 px-2 text-sm font-semibold"
+        />
         {!isReadOnly && (
           <button
             type="button"
@@ -290,6 +277,15 @@ function ExpenseCard({ expense, index }: { expense: BillExpense; index: number }
             <Trash2 className="h-4 w-4" />
           </button>
         )}
+        <button
+          type="button"
+          onClick={() => setIsScanOpen(true)}
+          disabled={isReadOnly}
+          className="btn btn-secondary ml-9 h-9 shrink-0 px-2.5 text-xs cursor-pointer sm:ml-9"
+        >
+          <ScanLine className="h-3.5 w-3.5" />
+          {t('scanBill', locale)}
+        </button>
       </div>
 
       {isCollapsed ? (

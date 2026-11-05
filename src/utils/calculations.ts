@@ -44,11 +44,16 @@ export function calculateSingleExpenseBreakdown(
   });
 }
 
+function getAllBillMembers(bill: BillSession): Member[] {
+  return [
+    ...(Array.isArray(bill.members) ? bill.members : []),
+    ...(Array.isArray(bill.timelineMembers) ? bill.timelineMembers : []),
+  ].filter((member, index, list) => list.findIndex((candidate) => candidate.id === member.id) === index);
+}
+
 /** Aggregate all timeline expenses into one breakdown per member. */
 export function calculateTimelineBreakdowns(bill: BillSession): MemberBreakdown[] {
-  const members = Array.isArray(bill.timelineMembers)
-    ? bill.timelineMembers
-    : (Array.isArray(bill.members) ? bill.members : []);
+  const members = getAllBillMembers(bill);
   const totals = new Map(members.map((member) => [member.id, {
     memberId: member.id,
     subtotal: 0,
@@ -120,7 +125,7 @@ export function calculateMemberBreakdowns(bill: BillSession | null | undefined):
   }
 
   const items = Array.isArray(bill.items) ? bill.items : [];
-  const members = Array.isArray(bill.members) ? bill.members : [];
+  const members = getAllBillMembers(bill);
   const taxPercent = typeof bill.taxPercent === 'number' ? bill.taxPercent : 0;
   const tipPercent = typeof bill.tipPercent === 'number' ? bill.tipPercent : 0;
 
