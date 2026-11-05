@@ -1,5 +1,5 @@
 
-import { Download, Copy, Check, Users, QrCode, Smartphone, Share2 } from 'lucide-react';
+import { Download, Check, Users, QrCode, Smartphone, Share2 } from 'lucide-react';
 import { exportBillToCsv } from '../../utils/exportCsv';
 import { useBillStore } from '../../store/useBillStore';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -71,73 +71,6 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
     ? (hasVietQrAccount ? dynamicVietQrUrl : activeMember?.custom_qr_url || '')
     : activeMember?.custom_qr_url || '';
 
-  const generateTextSummary = () => {
-    let text = `📄 ${currentBill.title}\n`;
-    text += `📅 ${formatDate(currentBill.date, locale)}\n`;
-    text += `━━━━━━━━━━━━━━━━━━━━\n\n`;
-
-    text += `🍽️ ${t('itemsNav', locale).toUpperCase()}:\n`;
-    if (currentBill.mode === 'TIMELINE') {
-      expenses.forEach((expense, expenseIndex) => {
-        text += `\n🕒 ${expense.time || '--:--'} — ${expense.title || `Chặng ${expenseIndex + 1}`}\n`;
-        text += `   👤 Người ứng: ${currentBill.members.find((member) => member.id === expense.payerId)?.name || t('noAssignment', locale)}\n`;
-        expense.items.forEach((item, itemIndex) => {
-          const names = item.assignedMemberIds.map((id) => currentBill.members.find((member) => member.id === id)?.name).filter(Boolean).join(', ');
-          text += `   ${itemIndex + 1}. ${item.name} x${item.quantity} = ${formatCurrency(item.price * item.quantity, currentBill.currency)}\n`;
-          text += `      👥 ${names || t('noAssignment', locale)}\n`;
-        });
-      });
-    } else {
-      currentBill.items.forEach((item, idx) => {
-        text += `${idx + 1}. ${item.name} x${item.quantity} = ${formatCurrency(item.price * item.quantity, currentBill.currency)}\n`;
-        const membersList = item.assignedMemberIds.map((id) => currentBill.members.find((m) => m.id === id)?.name).filter(Boolean).join(', ');
-        text += `   👥 ${membersList || t('noAssignment', locale)}\n`;
-      });
-    }
-
-    text += `\n💰 ${t('summaryNav', locale).toUpperCase()}:\n`;
-    text += `${t('totalItems', locale)}: ${formatCurrency(billSubtotal, currentBill.currency)}\n`;
-    if (currentBill.taxPercent > 0) {
-      text += `${t('taxLabel', locale).replace(' (%)', '')} (${currentBill.taxPercent}%): ${formatCurrency(totalTax, currentBill.currency)}\n`;
-    }
-    if (currentBill.tipPercent > 0) {
-      text += `${t('serviceFee', locale)} (${currentBill.tipPercent}%): ${formatCurrency(totalTip, currentBill.currency)}\n`;
-    }
-    text += `${t('total', locale).toUpperCase()}: ${formatCurrency(grandTotal, currentBill.currency)}\n`;
-
-    text += `\n👥 ${t('eachPersonDetails', locale).toUpperCase()}:\n`;
-    breakdowns.forEach((breakdown, idx) => {
-      const member = currentBill.members.find((m) => m.id === breakdown.memberId);
-      const isPayer = member?.id === currentBill.paidByMemberId;
-      text += `${idx + 1}. ${member?.name}${isPayer ? ' 👑' : ''}: ${formatCurrency(breakdown.totalOwed, currentBill.currency)}\n`;
-    });
-
-    if (settlements.length > 0) {
-      text += `\n💸 ${t('payments', locale).toUpperCase()}:\n`;
-      settlements.forEach((settlement, idx) => {
-        const fromMember = currentBill.members.find((m) => m.id === settlement.fromMemberId);
-        const toMember = currentBill.members.find((m) => m.id === settlement.toMemberId);
-        text += `${idx + 1}. ${fromMember?.name} → ${toMember?.name}: ${formatCurrency(settlement.amount, currentBill.currency)}\n`;
-      });
-    }
-
-    text += `\n━━━━━━━━━━━━━━━━━━━━\n`;
-    text += `✨ ${t('createdBy', locale)}\n`;
-
-    return text;
-  };
-
-  const handleCopyText = async () => {
-    const text = generateTextSummary();
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy:', err);
-    }
-  };
-
   const getShareURL = () => `${window.location.origin}/bill/${encodeURIComponent(currentBill.id)}`;
 
   const handleShareURL = async () => {
@@ -197,27 +130,14 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
         </button>
       )}
 
-      <div className="flex gap-3">
-        <button type="button" onClick={handleExportCsv} className="btn btn-secondary flex-1 cursor-pointer">
+      <div className="grid grid-cols-2 gap-3">
+        <button type="button" onClick={handleExportCsv} className="btn btn-secondary min-w-0 cursor-pointer">
           <Download className="w-4 h-4" />
           {t('exportCsv', locale)}
         </button>
-        <button type="button" onClick={handleExportImage} disabled={exporting} className="btn btn-primary flex-1 cursor-pointer">
+        <button type="button" onClick={handleExportImage} disabled={exporting} className="btn btn-primary min-w-0 cursor-pointer">
           <Download className="w-4 h-4" />
           {exporting ? t('exporting', locale) : t('downloadPng', locale)}
-        </button>
-        <button onClick={handleCopyText} className="btn btn-secondary flex-1 cursor-pointer">
-          {copied ? (
-            <>
-              <Check className="w-4 h-4 text-accent" />
-              {t('copied', locale)}
-            </>
-          ) : (
-            <>
-              <Copy className="w-4 h-4" />
-              {t('copyText', locale)}
-            </>
-          )}
         </button>
       </div>
 
