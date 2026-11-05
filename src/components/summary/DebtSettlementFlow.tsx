@@ -330,16 +330,17 @@ export function DebtSettlementFlow({ onNavigate }: DebtSettlementFlowProps = {})
       settlement.amount
     )}`;
 
-  const settledList: string[] = useMemo(
-    () =>
+  const settledKeys = useMemo(
+    () => new Set(
       Array.isArray(currentBill?.settled_transfers)
         ? currentBill.settled_transfers
-        : [],
+        : []
+    ),
     [currentBill?.settled_transfers]
   );
 
   const paidCount = settlements.filter((settlement) =>
-    settledList.includes(keyOf(settlement))
+    settledKeys.has(keyOf(settlement))
   ).length;
 
   const allPaid =
@@ -716,13 +717,15 @@ export function DebtSettlementFlow({ onNavigate }: DebtSettlementFlowProps = {})
                 (m) => m.id === settlement.toMemberId
               );
 
-              const isPaid = settledList.includes(key);
+              const isSettled = settledKeys.has(key);
 
               const confirmation =
                 currentBill.transfer_confirmations?.[key] ?? {
                   payerConfirmed: false,
                   receiverConfirmed: false,
                 };
+
+              const isPendingReport = !isSettled && confirmation.payerConfirmed;
 
               const paymentType = getAvailablePaymentType(to);
               const recipientInfo = getRecipientPaymentInfo(to);
@@ -742,7 +745,7 @@ export function DebtSettlementFlow({ onNavigate }: DebtSettlementFlowProps = {})
                 <li
                   key={key}
                   className={`rounded-xl border border-line bg-surface-2/60 p-3 transition-colors space-y-2.5 overflow-hidden ${
-                    isPaid ? 'opacity-60' : ''
+                    isSettled ? 'opacity-60' : ''
                   }`}
                 >
 
@@ -768,8 +771,8 @@ export function DebtSettlementFlow({ onNavigate }: DebtSettlementFlowProps = {})
                       <div className="flex flex-col items-center shrink-0 px-1">
                         <span
                           className={`text-xs font-semibold num whitespace-nowrap ${
-                            isPaid
-                              ? 'line-through text-ink-3'
+                            isSettled
+                              ? 'line-through text-ink-3 opacity-60'
                               : 'text-accent'
                           }`}
                         >
@@ -825,7 +828,7 @@ export function DebtSettlementFlow({ onNavigate }: DebtSettlementFlowProps = {})
                     )}
 
                     {/* TRẠNG THÁI ĐÃ BÁO CHUYỂN TIỀN */}
-                    {!isPaid &&
+                    {isPendingReport &&
                       confirmation.payerConfirmed &&
                       !confirmation.receiverConfirmed && (
                         <span className="flex items-center gap-1 text-[11px] text-amber-500 font-medium text-right max-w-[190px] leading-tight">
@@ -852,12 +855,12 @@ export function DebtSettlementFlow({ onNavigate }: DebtSettlementFlowProps = {})
                         }
                         aria-pressed={confirmation.receiverConfirmed}
                         className={`text-xs px-2 py-1 rounded-md border cursor-pointer transition ${
-                          isPaid || confirmation.receiverConfirmed
+                          isSettled || confirmation.receiverConfirmed
                             ? 'text-accent border-accent/30 hover:bg-accent/10'
                             : 'text-amber-500 border-amber-500/40 hover:bg-amber-500/10'
                         }`}
                         title={
-                          isPaid || confirmation.receiverConfirmed
+                          isSettled || confirmation.receiverConfirmed
                             ? (
                                 locale === 'ru'
                                   ? 'Нажмите, чтобы отменить подтверждение'
@@ -880,17 +883,20 @@ export function DebtSettlementFlow({ onNavigate }: DebtSettlementFlowProps = {})
                             : t('confirmReceivedBtn', locale)
                         }
                       >
-                        {isPaid || confirmation.receiverConfirmed
+                        {isSettled || confirmation.receiverConfirmed
                           ? (locale === 'vi' ? 'Đã xác nhận · Hủy' : locale === 'ru' ? 'Подтверждено · Отменить' : locale === 'zh' ? '已确认 · 取消' : 'Confirmed · Undo')
                           : (locale === 'vi' ? 'Xác nhận đã nhận' : locale === 'ru' ? 'Подтвердить получение' : locale === 'zh' ? '确认收款' : 'Confirm received')}
                       </button>
-                    ) : isPaid ? (
-                      <CheckCircle2 className="w-5 h-5 shrink-0 text-accent" />
+                    ) : isSettled ? (
+                      <span className="flex items-center gap-1 text-xs font-semibold text-emerald-400">
+                        <CheckCircle2 className="w-5 h-5 shrink-0" />
+                        {locale === 'vi' ? 'Đã xác nhận thanh toán' : locale === 'ru' ? 'Оплата подтверждена' : locale === 'zh' ? '已确认付款' : 'Payment confirmed'}
+                      </span>
                     ) : null}
                   </div>
 
                   {/* THÔNG TIN THANH TOÁN */}
-                  {(!isPaid || (isPayer && confirmation.payerConfirmed)) && (
+                  {!isSettled && (
                     <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-line/40 text-xs">
 
                       {/* NÚT HIỂN THỊ QR */}
@@ -969,7 +975,7 @@ export function DebtSettlementFlow({ onNavigate }: DebtSettlementFlowProps = {})
                       )}
 
                       {/* NÚT BÁO ĐÃ CHUYỂN TIỀN */}
-                      {isPayer && updateTransferConfirmation &&
+                      {isPayer && !isSettled && updateTransferConfirmation &&
                         (
                           !confirmation.receiverConfirmed ||
                           (isPayer && confirmation.receiverConfirmed)

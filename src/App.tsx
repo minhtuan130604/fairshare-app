@@ -126,7 +126,7 @@ function AppContent() {
             : payload.new?.settled_transfers;
 
 
-          if (newConfirmations || newSettled) {
+          if (newConfirmations !== undefined || newSettled !== undefined) {
             useBillStore.setState((state) => {
               if (!state.currentBill || state.currentBill.id !== currentBillId) return state;
               const nextBill = {
