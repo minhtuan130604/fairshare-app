@@ -1,3 +1,4 @@
+
 import { Download, Copy, Check, Link2, Users, QrCode, Smartphone, Share2 } from 'lucide-react';
 import { useBillStore } from '../../store/useBillStore';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -214,27 +215,18 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
         </button>
       </div>
 
-      <div className="flex gap-3">
-        <button type="button" onClick={handleCopyURL} className="btn btn-secondary flex-1 cursor-pointer">
-          {urlCopied ? (
-            <>
-              <Check className="w-4 h-4 text-accent" />
-              {t('copiedLink', locale)}
-            </>
-          ) : (
-            <>
-              <Link2 className="w-4 h-4" />
-              {t('copyShareLink', locale)}
-            </>
-          )}
+      <div className="flex items-center gap-2 rounded-xl border border-line bg-surface-2 p-1.5">
+        <Link2 className="ml-2 h-4 w-4 shrink-0 text-ink-3" />
+        <input readOnly value={getShareURL()} aria-label={t('copyShareLink', locale)} className="min-w-0 flex-1 bg-transparent px-1 text-xs text-ink-2 outline-none" />
+        <button type="button" onClick={handleCopyURL} className="btn btn-secondary shrink-0 px-3 py-2 text-xs cursor-pointer" aria-label={t('copyShareLink', locale)}>
+          {urlCopied ? <Check className="h-4 w-4 text-accent" /> : <Copy className="h-4 w-4" />}
+          <span className="sr-only">{urlCopied ? t('copiedLink', locale) : t('copyShareLink', locale)}</span>
         </button>
-        {typeof navigator.share === 'function' && (
-          <button type="button" onClick={handleShareURL} className="btn btn-primary flex-1 cursor-pointer">
-            <Share2 className="w-4 h-4" />
-            {t('shareBill', locale)}
-          </button>
-        )}
       </div>
+      <button type="button" onClick={handleShareURL} className="btn btn-primary w-full cursor-pointer">
+        <Share2 className="w-4 h-4" />
+        {t('shareBill', locale)}
+      </button>
       <p className="text-xs text-ink-3 text-center">{t('shareLinkDesc', locale)}</p>
     </div>
   );

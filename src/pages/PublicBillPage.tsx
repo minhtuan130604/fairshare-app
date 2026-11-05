@@ -14,11 +14,11 @@ type PublicProfile = {
   custom_qr_url?: string; russia_qr_url?: string;
 };
 
-type BankConfig = { aliases: string[]; displayName: string; scheme: string; webUrl: string };
+type BankConfig = { aliases: string[]; displayName: string; scheme: string; alternateScheme?: string; webUrl: string };
 
 export const VIETNAM_BANKS_CONFIG: BankConfig[] = [
   { aliases: ['vcb', 'vietcombank'], displayName: 'Vietcombank', scheme: 'vietcombank://', webUrl: 'https://vcbdigibank.vietcombank.com.vn/' },
-  { aliases: ['tcb', 'techcombank'], displayName: 'Techcombank', scheme: 'techcombank://', webUrl: 'https://nhanong.techcombank.com.vn/' },
+  { aliases: ['tcb', 'techcombank'], displayName: 'Techcombank', scheme: 'techcombank://', alternateScheme: 'tcb://', webUrl: 'https://nhanong.techcombank.com.vn/' },
   { aliases: ['mb', 'mbbank'], displayName: 'MB Bank', scheme: 'mbmobile://', webUrl: 'https://online.mbbank.com.vn/' },
   { aliases: ['bidv'], displayName: 'BIDV', scheme: 'bidvsmartbanking://', webUrl: 'https://smartbanking.bidv.com.vn/' },
   { aliases: ['vtb', 'vietinbank', 'ctg'], displayName: 'VietinBank', scheme: 'vietinbankipay://', webUrl: 'https://ipay.vietinbank.vn/' },
@@ -28,7 +28,7 @@ export const VIETNAM_BANKS_CONFIG: BankConfig[] = [
 ];
 
 export const RUSSIA_BANKS_CONFIG: BankConfig[] = [
-  { aliases: ['sber', 'сбер', 'сбербанк'], displayName: 'Сбербанк', scheme: 'sberbankonline://', webUrl: 'https://web.sberbank.ru/' },
+  { aliases: ['sber', 'сбер', 'сбербанк'], displayName: 'Сбербанк', scheme: 'sberbankonline://', alternateScheme: 'sberbank://', webUrl: 'https://web.online.sberbank.ru/' },
   { aliases: ['tinkoff', 'tbank', 'тинькофф', 'т-банк'], displayName: 'Т-Банк', scheme: 'tinkoffbank://', webUrl: 'https://www.tbank.ru/' },
   { aliases: ['vtb', 'втб'], displayName: 'ВТБ', scheme: 'vtb-mobile://', webUrl: 'https://online.vtb.ru/' },
   { aliases: ['alfa', 'альфа', 'альфа-банк'], displayName: 'Альфа-Банк', scheme: 'alfabank://', webUrl: 'https://web.alfabank.ru/' },
@@ -68,8 +68,7 @@ export function PublicBillPage({ billId }: PublicBillPageProps) {
   const [selectedBankAlias, setSelectedBankAlias] = useState('');
   const [bankPickerOpen, setBankPickerOpen] = useState(false);
   const [sslWarningOpen, setSslWarningOpen] = useState(false);
-
-
+  const isInAppBrowser = typeof navigator !== 'undefined' && /Telegram|FBAN|FBAV|Line|Instagram|TikTok/i.test(navigator.userAgent);
 
   useEffect(() => {
     let active = true;
@@ -82,8 +81,9 @@ export function PublicBillPage({ billId }: PublicBillPageProps) {
         if (!billRow) { if (active) setStatus('missing'); return; }
         const loadedBill = normaliseBill(billRow as Record<string, unknown>);
         let loadedProfile: PublicProfile | null = null;
-        if (billRow.user_id) {
-          const result = await supabase.from('profiles').select('*').eq('id', billRow.user_id).maybeSingle();
+        const profileUserId = billRow.user_id || loadedBill.user_id;
+        if (profileUserId) {
+          const result = await supabase.from('profiles').select('*').eq('id', profileUserId).maybeSingle();
           if (result.error) console.warn('Unable to load bill owner profile:', result.error.message);
           loadedProfile = result.data as PublicProfile | null;
         }
@@ -131,36 +131,56 @@ export function PublicBillPage({ billId }: PublicBillPageProps) {
   const filteredItems = useMemo(() => {
     if (!bill || selectedMemberId === 'all') return [];
     if (bill.mode === 'TIMELINE') return (bill.expenses || []).flatMap((expense) => expense.items.filter((item) => (item.assignedMemberIds?.length ? item.assignedMemberIds.includes(selectedMemberId) : expense.participantIds?.includes(selectedMemberId))).map((item) => ({ ...item, section: expense.title })));
+
     return bill.items.filter((item) => item.assignedMemberIds?.includes(selectedMemberId)).map((item) => ({ ...item, section: '' }));
   }, [bill, selectedMemberId]);
   const isRub = bill?.currency === 'RUB';
   const bankConfigs = isRub ? RUSSIA_BANKS_CONFIG : VIETNAM_BANKS_CONFIG;
-  const recipientBankConfig = findBankConfig(isRub ? profile?.russia_bank : profile?.bank_name, bankConfigs);
+  const recipientBankConfig = findBankConfig(isRub ? (profile?.russia_bank || payerMember?.russia_bank) : (profile?.bank_name || payerMember?.bank_name), bankConfigs);
   const selectedBankConfig = findBankConfig(selectedBankAlias || recipientBankConfig.aliases[0], bankConfigs);
-  const bankDisplayName = isRub ? russiaBankDisplayName(profile?.russia_bank) || recipientBankConfig.displayName : recipientBankConfig.displayName;
-  const paymentDetails = `${isRub ? profile?.russia_account_holder || profile?.display_name || '' : profile?.account_holder || profile?.display_name || ''}\n${isRub ? profile?.phone_number || '' : profile?.account_number || ''}`.trim();
+  const payerProfile = payerMember ? {
+    display_name: payerMember.name,
+    bank_name: payerMember.bank_name,
+    account_number: payerMember.account_number,
+    account_holder: payerMember.account_holder,
+    russia_bank: payerMember.russia_bank,
+    russia_account_holder: payerMember.russia_account_holder,
+    phone_number: payerMember.phone_number,
+    custom_qr_url: payerMember.custom_qr_url,
+    russia_qr_url: payerMember.russia_qr_url,
+  } : null;
+  const recipientProfile: PublicProfile = {
+    display_name: profile?.display_name || payerProfile?.display_name,
+    bank_name: profile?.bank_name || payerProfile?.bank_name,
+    account_number: profile?.account_number || payerProfile?.account_number,
+    account_holder: profile?.account_holder || payerProfile?.account_holder,
+    russia_bank: profile?.russia_bank || payerProfile?.russia_bank,
+    russia_account_holder: profile?.russia_account_holder || payerProfile?.russia_account_holder,
+    phone_number: profile?.phone_number || payerProfile?.phone_number,
+    custom_qr_url: profile?.custom_qr_url || payerProfile?.custom_qr_url,
+    russia_qr_url: profile?.russia_qr_url || payerProfile?.russia_qr_url,
+  };
+  const bankDisplayName = isRub ? russiaBankDisplayName(recipientProfile.russia_bank) || recipientBankConfig.displayName : recipientBankConfig.displayName;
+  const recipientName = isRub ? recipientProfile.russia_account_holder || recipientProfile.account_holder || recipientProfile.display_name : recipientProfile.account_holder || recipientProfile.display_name;
+  const recipientAccount = isRub ? recipientProfile.phone_number : recipientProfile.account_number;
+  const paymentDetails = `${recipientName || ''}\n${recipientAccount || ''}`.trim();
   const handleBankChange = (alias: string) => {
     setSelectedBankAlias(alias);
     try { window.localStorage.setItem('fairshare_selected_bank', alias); } catch { /* storage may be unavailable */ }
   };
-  const handleOpenBankApp = () => {
-    window.location.href = selectedBankConfig.scheme;
-    window.setTimeout(() => {
-      if (isRub) setSslWarningOpen(true);
-      else window.open(selectedBankConfig.webUrl, '_blank', 'noopener,noreferrer');
-    }, 1500);
+  const handleOpenBankApp = (scheme = selectedBankConfig.scheme) => {
+    window.location.href = scheme;
   };
   const openYandexBrowser = () => {
-    window.location.href = `yandexbrowser-open-url://${encodeURIComponent(selectedBankConfig.webUrl)}`;
-    window.setTimeout(() => window.open(selectedBankConfig.webUrl, '_blank', 'noopener,noreferrer'), 500);
+    window.location.href = selectedBankConfig.webUrl;
   };
 
   const showPaymentSection = selectedMemberId === 'all' || !isSelectedPayer;
   const formatAmount = (amount: number) => formatCurrency(amount, bill?.currency, locale);
-  const hasVietAccount = Boolean(profile?.bank_name && profile?.account_number);
-  const qrUrl = isRub ? profile?.russia_qr_url || profile?.custom_qr_url || '' : hasVietAccount
-    ? `https://img.vietqr.io/image/${profile?.bank_name}-${profile?.account_number}-compact2.png?amount=${Math.round(selectedBreakdown?.totalOwed || totals?.total || 0)}&addInfo=${encodeURIComponent(bill?.title || 'FairShare')}&accountName=${encodeURIComponent(profile?.account_holder || '')}`
-    : profile?.custom_qr_url || '';
+  const hasVietAccount = Boolean(recipientProfile.bank_name && recipientProfile.account_number);
+  const qrUrl = isRub ? recipientProfile.russia_qr_url || recipientProfile.custom_qr_url || '' : hasVietAccount
+    ? `https://img.vietqr.io/image/${recipientProfile.bank_name}-${recipientProfile.account_number}-compact2.png?amount=${Math.round(selectedBreakdown?.totalOwed || totals?.total || 0)}&addInfo=${encodeURIComponent(bill?.title || 'FairShare')}&accountName=${encodeURIComponent(recipientName || '')}`
+    : recipientProfile.custom_qr_url || '';
   const copyAccount = async () => {
     if (!paymentDetails) return;
     await navigator.clipboard.writeText(paymentDetails);
@@ -182,6 +202,7 @@ export function PublicBillPage({ billId }: PublicBillPageProps) {
           <p className="mt-1 text-sm text-ink-3">{formatDate(bill.date, locale)}</p>
           <p className="mt-4 text-3xl font-bold text-accent">{formatAmount(totals.total)}</p>
         </header>
+        {isInAppBrowser && <div className="rounded-2xl border border-accent/30 bg-accent/10 p-3 text-sm leading-relaxed text-ink-2">{t('in_app_browser_bank_notice', locale)}</div>}
         <section className="rounded-3xl border border-line bg-surface p-5">
           <h2 className="mb-3 text-sm font-semibold">{t('select_name_to_view', locale)}</h2>
           <div className="flex flex-wrap gap-2">
@@ -200,9 +221,9 @@ export function PublicBillPage({ billId }: PublicBillPageProps) {
         {showPaymentSection && <section className="rounded-3xl border border-line bg-surface p-5">
           <h2 className="flex items-center gap-2 text-lg font-semibold"><CreditCard className="h-5 w-5 text-accent" /> {t('transfer_info_title', locale)}</h2>
           {qrUrl && <img src={qrUrl} alt="Mã QR thanh toán" className="mx-auto mt-4 h-56 w-56 rounded-xl object-contain" />}
-          <div className="mt-4 space-y-2 text-sm text-ink-2"><p>{t('recipient_label', locale)} <strong className="text-ink">{isRub ? profile?.russia_account_holder || profile?.display_name || '—' : profile?.account_holder || profile?.display_name || '—'}</strong></p><p>{t('bank_label', locale)} <strong className="text-ink">{bankDisplayName || '—'}</strong></p><p>{t('account_or_phone_label', locale)} <strong className="text-ink">{isRub ? profile?.phone_number || '—' : profile?.account_number || '—'}</strong></p></div>
+          <div className="mt-4 space-y-2 text-sm text-ink-2"><p>{t('recipient_label', locale)} <strong className="text-ink">{recipientName || '—'}</strong></p><p>{t('bank_label', locale)} <strong className="text-ink">{bankDisplayName || '—'}</strong></p><p>{t('account_or_phone_label', locale)} <strong className="text-ink">{recipientAccount || '—'}</strong></p></div>
           {!isSelectedPayer && <div className="relative mt-4 rounded-2xl bg-surface-2 p-3"><p className="text-sm font-semibold">{t('select_your_bank', locale)}</p><div className="mt-2 flex gap-2"><button type="button" onClick={() => setBankPickerOpen((open) => !open)} className="field flex min-w-0 flex-1 items-center justify-between gap-2 text-left"><span className="truncate">{selectedBankConfig.displayName}</span><span aria-hidden="true">▾</span></button><button type="button" onClick={() => setBankPickerOpen((open) => !open)} className="shrink-0 rounded-xl border border-line px-3 py-2 text-xs font-semibold hover:bg-surface">{t('change_bank', locale)}</button></div>{bankPickerOpen && <div className="absolute inset-x-3 top-full z-20 mt-2 max-h-60 overflow-y-auto rounded-xl border border-line bg-surface py-1 shadow-xl" role="listbox" aria-label={t('select_your_bank', locale)}>{bankConfigs.map((config) => <button key={config.aliases[0]} type="button" role="option" aria-selected={selectedBankConfig.displayName === config.displayName} onClick={() => { handleBankChange(config.aliases[0]); setBankPickerOpen(false); }} className={`block w-full px-3 py-2 text-left text-sm hover:bg-surface-2 ${selectedBankConfig.displayName === config.displayName ? 'font-semibold text-accent' : 'text-ink'}`}>{config.displayName}</button>)}</div>}</div>}
-          <div className="mt-4 flex flex-col gap-2 sm:flex-row"><button type="button" onClick={handleOpenBankApp} className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white hover:opacity-90"><CreditCard className="h-4 w-4" />{t('open_bank_app', locale, { bank: selectedBankConfig.displayName })}<ExternalLink className="h-4 w-4" /></button><button type="button" onClick={() => void copyAccount()} className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-line px-4 py-3 text-sm font-semibold hover:bg-surface-2">{copied ? <Check className="h-4 w-4 text-accent" /> : <Copy className="h-4 w-4" />}{copied ? t('copied', locale) : t('copy_bank_info', locale)}</button></div>
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row"><button type="button" onClick={() => handleOpenBankApp()} className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white hover:opacity-90"><CreditCard className="h-4 w-4" />{t('open_bank_app', locale, { bank: selectedBankConfig.displayName })}<ExternalLink className="h-4 w-4" /></button>{selectedBankConfig.alternateScheme && <button type="button" onClick={() => handleOpenBankApp(selectedBankConfig.alternateScheme)} className="flex items-center justify-center rounded-xl border border-line px-3 py-3 text-sm font-semibold hover:bg-surface-2" aria-label={`${t('open_bank_app', locale, { bank: selectedBankConfig.displayName })} (${selectedBankConfig.alternateScheme})`}>{selectedBankConfig.alternateScheme.replace('://', '')}</button>}<button type="button" onClick={() => void copyAccount()} className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-line px-4 py-3 text-sm font-semibold hover:bg-surface-2">{copied ? <Check className="h-4 w-4 text-accent" /> : <Copy className="h-4 w-4" />}{copied ? t('copied', locale) : t('copy_bank_info', locale)}</button></div>
         </section>}
         <button type="button" onClick={() => { window.location.href = '/'; }} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-accent px-5 py-4 text-center font-semibold text-white hover:opacity-90">{t('create_bill_cta', locale)} <ArrowRight className="h-4 w-4" /></button>
         <a href="/" className="flex items-center justify-center gap-2 text-sm text-ink-3"><Home className="h-4 w-4" /> {t('home_link', locale)}</a>
