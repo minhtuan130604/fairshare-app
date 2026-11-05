@@ -152,9 +152,10 @@ function createBillSummary(bill: BillSession) {
       * (1 + (Number(clean.taxPercent) || 0) / 100 + (Number(clean.tipPercent) || 0) / 100);
   const members = mode === 'TIMELINE' ? clean.timelineMembers || clean.members || [] : clean.members || [];
   return {
-    title: clean.title || 'Hóa đơn', date: clean.date, currency: clean.currency || 'VND',
-    category: clean.category || 'dining', mode, total, memberCount: members.length,
-    settled_transfers: clean.settled_transfers || [],
+    title: clean.title || 'Hóa đơn',
+    currency: clean.currency || 'VND',
+    total,
+    memberCount: members.length,
   };
 }
 
@@ -1414,59 +1415,51 @@ export const useBillStore = create<BillState>()(
 
         isFetchingBills = true;
         setSessionSyncTime(BILLS_SYNC_TIME_KEY, user.id);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const normalizeBillRow = (row: any): BillSession & { summaryOnly?: boolean; summaryTotal?: number; summaryMemberCount?: number; summary?: { title: string; currency: string; total: number; memberCount: number; isSettled: boolean } } => {
-          const raw = row?.data || row?.bill_data || {};
-          const source = row?.summaryOnly ? (row?.summary || {}) : raw;
-          const billCurrency = source?.currency || row?.currency || raw?.currency || 'VND';
-          const members = row?.members ?? raw?.members ?? source?.members;
-          const expenses = row?.expenses ?? raw?.expenses ?? source?.expenses;
-          const summaryTotal = Number(source?.total ?? row?.totals?.total ?? raw?.totals?.total ?? 0);
-          const expenseTotal = Array.isArray(expenses) ? expenses.reduce((sum: number, expense: any) => sum + Number(expense?.total ?? expense?.amount ?? 0), 0) : 0;
-          const billTotal = summaryTotal || expenseTotal;
-          const memberCount = Number(source?.memberCount ?? (Array.isArray(members) ? members.length : 0));
-          const summary = row?.summary && row.summary.total != null
-            ? row.summary
-            : { title: row?.title || source?.title || 'Hóa đơn', currency: billCurrency, total: billTotal, memberCount, isSettled: false };
-          return {
-            timelineMembers: Array.isArray(source?.timelineMembers) ? source.timelineMembers : (Array.isArray(members) ? members : []),
-            id: row?.id || source?.id || generateId(),
-            user_id: row?.user_id || source?.user_id,
-            title: source?.title || row?.title || 'Hóa đơn',
-            date: source?.date || row?.created_at || new Date().toISOString(),
-            currency: summary.currency || billCurrency,
-            category: (source?.category || row?.category || 'dining') as BillCategory,
-            mode: source?.mode || (Array.isArray(expenses) && expenses.length > 0 ? 'TIMELINE' : 'SINGLE'),
-            summaryOnly: Boolean(row?.summaryOnly),
-            summaryTotal: Number(summary.total) || 0,
-            summaryMemberCount: Number(summary.memberCount) || 0,
-            summary,
-            expenses: Array.isArray(expenses) ? expenses : [],
-            items: Array.isArray(source?.items) ? source.items : [],
-            members: Array.isArray(members) ? members : [],
-            taxPercent: typeof source?.taxPercent === 'number' ? source.taxPercent : 0,
-            tipPercent: typeof source?.tipPercent === 'number' ? source.tipPercent : 0,
-            paidByMemberId: source?.paidByMemberId || '',
-            splitMode: source?.splitMode || 'ITEMIZED',
-            isSharedBill: Boolean(source?.isSharedBill),
-            shareId: source?.shareId,
-            sharedBy: source?.sharedBy,
-            transfer_confirmations: row?.transfer_confirmations ?? source?.transfer_confirmations ?? {},
-            settled_transfers: row?.settled_transfers ?? source?.settled_transfers ?? [],
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const normalizeBillRow = (row: any): BillSession & { summaryOnly: boolean; summaryTotal: number; summaryMemberCount: number; summary: { title: string; currency: string; total: number; memberCount: number }; totals: { total: number; subtotal: number; tax: number; tip: number } } => {
+            const summary = row?.summary || {};
+            const title = summary.title || row?.title || 'Hóa đơn';
+            const currency = summary.currency || 'VND';
+            const total = Number(summary.total || 0);
+            const memberCount = Number(summary.memberCount || 1);
+            return {
+              id: row?.id || generateId(),
+              user_id: row?.user_id,
+              title,
+              date: row?.created_at || new Date().toISOString(),
+              currency,
+              summary: { title, currency, total, memberCount },
+              totals: { total, subtotal: total, tax: 0, tip: 0 },
+              summaryOnly: true,
+              summaryTotal: total,
+              summaryMemberCount: memberCount,
+              timelineMembers: [],
+              category: 'dining',
+              mode: 'SINGLE',
+              expenses: [],
+              items: [],
+              members: Array(memberCount).fill(null) as unknown as Member[],
+              taxPercent: 0,
+              tipPercent: 0,
+              paidByMemberId: '',
+              splitMode: 'ITEMIZED',
+              isSharedBill: false,
+              transfer_confirmations: {},
+              settled_transfers: [],
+            };
           };
-        };
 
         try {
           const { data: myBillsData, error: myError } = await supabase
             .from('bills')
-            .select('id, user_id, title, created_at, updated_at, summary, data->currency, data->totals, data->members, data->expenses, transfer_confirmations, settled_transfers')
+            .select('id, user_id, title, created_at, updated_at, summary')
             .eq('user_id', user.id)
             .order('created_at', { ascending: false });
           if (myError) throw myError;
 
           const { data: sharedData } = await supabase
             .from('bill_shares')
-            .select('id, bill:bills (id, user_id, title, created_at, updated_at, summary, data->currency, data->totals, data->members, data->expenses, transfer_confirmations, settled_transfers), sender:profiles!sender_id (display_name)')
+            .select('id, bill:bills (id, user_id, title, created_at, updated_at, summary), sender:profiles!sender_id (display_name)')
             .eq('receiver_id', user.id);
 
           const myBills = (myBillsData || [])
@@ -1548,6 +1541,28 @@ export const useBillStore = create<BillState>()(
               mode: latestBill.mode || (latestBill.expenses && latestBill.expenses.length > 0 ? 'TIMELINE' : 'SINGLE'),
               expenses: Array.isArray(latestBill.expenses) ? latestBill.expenses : [],
             };
+            const timelineExpenses = cleanBill.expenses || [];
+            const billsToSummarize: BillSession[] = cleanBill.mode === 'TIMELINE' && timelineExpenses.length > 0
+              ? timelineExpenses.map((expense) => ({
+                ...cleanBill,
+                items: expense.items || [],
+                taxPercent: expense.taxPercent,
+                tipPercent: expense.tipPercent,
+              }))
+              : [cleanBill];
+            const total = billsToSummarize.reduce((sum, billPart) => {
+              const subtotal = (billPart.items || []).reduce((itemSum, item) =>
+                itemSum + (Number(item.price) || 0) * (Number(item.quantity) || 0), 0);
+              return sum + subtotal
+                + subtotal * ((Number(billPart.taxPercent) || 0) / 100)
+                + subtotal * ((Number(billPart.tipPercent) || 0) / 100);
+            }, 0);
+            const summary = {
+              title: cleanBill.title || 'Hóa đơn',
+              currency: cleanBill.currency,
+              total,
+              memberCount: (cleanBill.mode === 'TIMELINE' ? cleanBill.timelineMembers || cleanBill.members : cleanBill.members).length,
+            };
             const finalFingerprint = fingerprint(cleanBill);
             if (persistedBillFingerprints.get(`${user.id}:${cleanBill.id}`) === finalFingerprint) return;
             const { error } = await supabase.from('bills').upsert({
@@ -1555,7 +1570,7 @@ export const useBillStore = create<BillState>()(
               user_id: user.id,
               title: cleanBill.title || 'Hóa đơn',
               data: stripBase64Images(cleanBill),
-              summary: createBillSummary(cleanBill),
+              summary,
               transfer_confirmations: cleanBill.transfer_confirmations || {},
               settled_transfers: cleanBill.settled_transfers || [],
               updated_at: new Date().toISOString(),

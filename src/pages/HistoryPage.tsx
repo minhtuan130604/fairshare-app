@@ -19,6 +19,8 @@ import { useBillStore } from '../store/useBillStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { useLocale, t } from '../hooks/useLocale';
 import { calculateBillTotals, calculateMemberBreakdowns, calculateSettlements } from '../utils/calculations';
+import { formatCurrency } from '../utils/formatters';
+
 import type { BillSession } from '../types/bill';
 
 interface HistoryPageProps {
@@ -55,19 +57,6 @@ const calculateBillTotal = (bill: BillSession): number => {
   return (bill as BillSession & { summaryOnly?: boolean; summaryTotal?: number }).summaryOnly
     ? Number((bill as BillSession & { summaryTotal?: number }).summaryTotal) || 0
     : calculateBillTotals(bill).total;
-};
-
-const money = (amount: number, currency?: string) => {
-  const curr = currency === 'RUB' ? 'RUB' : currency === 'VND' ? 'VND' : 'VND';
-  try {
-    return new Intl.NumberFormat(undefined, {
-      style: 'currency',
-      currency: curr,
-      maximumFractionDigits: curr === 'VND' ? 0 : 2,
-    }).format(amount);
-  } catch {
-    return `${amount.toLocaleString()} ${curr === 'RUB' ? '₽' : '₫'}`;
-  }
 };
 
 export function HistoryPage({ onBack, onOpenBill }: HistoryPageProps) {
@@ -324,6 +313,9 @@ export function HistoryPage({ onBack, onOpenBill }: HistoryPageProps) {
                 {dateBills.map((bill) => {
                   const activeSource = currentBill && currentBill.id === bill.id ? currentBill : bill;
 
+                  const displayTotal = Number((bill as BillSession & { summary?: { total?: number } }).summary?.total ?? (bill as BillSession & { totals?: { total?: number } }).totals?.total ?? 0);
+                  const displayCurrency = (bill as BillSession & { summary?: { currency?: string } }).summary?.currency || bill.currency || 'VND';
+
                   const summaryOnly = Boolean((bill as BillSession & { summaryOnly?: boolean }).summaryOnly);
 
                   const settlements = summaryOnly ? [] : calculateSettlements(calculateMemberBreakdowns(activeSource));
@@ -396,7 +388,7 @@ export function HistoryPage({ onBack, onOpenBill }: HistoryPageProps) {
                       {/* Khối bên phải: Tổng tiền, Nút xóa & Mũi tên */}
                       <div className="flex shrink-0 items-center gap-2 sm:gap-3">
                         <span className="num font-mono font-bold text-xs sm:text-sm text-accent">
-                          {money(calculateBillTotal(bill), (bill as BillSession & { summary?: { currency?: string } }).summary?.currency ?? bill.currency ?? 'VND')}
+                          {formatCurrency(displayTotal, displayCurrency, locale)}
                         </span>
 
                         <button
