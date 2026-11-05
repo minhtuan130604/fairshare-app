@@ -1,5 +1,6 @@
 
 
+
 import {
   ArrowRight,
   Bell,
@@ -735,7 +736,7 @@ export function DebtSettlementFlow({ onNavigate }: DebtSettlementFlowProps = {})
               const isBillOwner =
                 (currentBill as any).user_id === user?.id;
 
-              const canConfirmReceived = isReceiver || isBillOwner;
+              const canConfirmReceived = !isPayer && (isReceiver || isBillOwner);
 
               return (
                 <li
@@ -841,35 +842,6 @@ export function DebtSettlementFlow({ onNavigate }: DebtSettlementFlowProps = {})
                           </span>
                         </span>
                       )}
-
-                    {/* TÍCH XANH CỦA PAYER: bấm để hủy toàn bộ xác nhận */}
-                    {isPayer && confirmation.payerConfirmed && updateTransferConfirmation ? (
-                      <button
-                        type="button"
-                        onClick={() => void updateTransferConfirmation(key, 'payer')}
-                        aria-label={
-                          locale === 'vi'
-                            ? 'Hủy xác nhận chuyển tiền'
-                            : locale === 'ru'
-                            ? 'Отменить подтверждение перевода'
-                            : locale === 'zh'
-                            ? '取消转账确认'
-                            : 'Cancel transfer confirmation'
-                        }
-                        className="text-xs text-accent hover:underline cursor-pointer transition"
-                        title={
-                          locale === 'vi'
-                            ? 'Bấm để hủy xác nhận chuyển tiền'
-                            : locale === 'ru'
-                            ? 'Нажмите, чтобы отменить подтверждение перевода'
-                            : locale === 'zh'
-                            ? '点击取消转账确认'
-                            : 'Click to cancel transfer confirmation'
-                        }
-                      >
-                        {locale === 'vi' ? 'Hủy thông báo' : locale === 'ru' ? 'Отменить' : locale === 'zh' ? '取消' : 'Cancel report'}
-                      </button>
-                    ) : null}
 
                     {/* NÚT XÁC NHẬN ĐÃ NHẬN TIỀN */}
                     {canConfirmReceived && confirmation.payerConfirmed && updateTransferConfirmation ? (

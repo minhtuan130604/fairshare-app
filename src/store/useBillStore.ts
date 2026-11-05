@@ -499,6 +499,27 @@ export const useBillStore = create<BillState>()(
           history: withBillInHistory(state, updatedBill),
         }));
 
+        // Broadcast trước persistence: lỗi DB/notification không được chặn realtime.
+        const broadcastChannel = supabase.channel(`bill-transfer-${currentBill.id}`);
+        try {
+          await broadcastChannel.send({
+            type: 'broadcast',
+            event: 'transfer_confirmation_updated',
+            payload: {
+              billId: currentBill.id,
+              transferKey,
+              status: isSettled ? 'CONFIRMED' : 'PENDING',
+              transfer_confirmations: updatedConfirmations,
+              settled_transfers: settledTransfers,
+            },
+          });
+        } catch (broadcastError) {
+          console.error('Lỗi phát realtime xác nhận chuyển khoản:', broadcastError);
+        } finally {
+          void supabase.removeChannel(broadcastChannel);
+        }
+
+
         try {
           // Lưu ngay lên Supabase
           const { error: billUpdateError } = await supabase
@@ -511,18 +532,6 @@ export const useBillStore = create<BillState>()(
             })
             .eq('id', currentBill.id);
           if (billUpdateError) throw billUpdateError;
-
-          const transferChannel = supabase.channel(`bill-transfer-${currentBill.id}`);
-          await transferChannel.send({
-            type: 'broadcast',
-            event: 'transfer_confirmation_updated',
-            payload: {
-              billId: currentBill.id,
-              transfer_confirmations: updatedConfirmations,
-              settled_transfers: settledTransfers,
-            },
-          });
-          void supabase.removeChannel(transferChannel);
 
           // Bắn thông báo nếu người chuyển báo đã gửi tiền
           if (role === 'payer' && newConfirmation.payerConfirmed) {
