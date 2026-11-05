@@ -1073,7 +1073,6 @@ export const useBillStore = create<BillState>()(
           paidByMemberId: currentBill.paidByMemberId || newMember.id,
         };
         set((state) => ({ currentBill: updatedBill, history: withBillInHistory(state, updatedBill) }));
-        void get().saveBillToCloud(updatedBill);
       },
 
       removeMember: (memberId: string) => {
@@ -1096,7 +1095,6 @@ export const useBillStore = create<BillState>()(
               : currentBill.paidByMemberId,
         };
         set((state) => ({ currentBill: updatedBill, history: withBillInHistory(state, updatedBill) }));
-        void get().saveBillToCloud(updatedBill);
       },
 
       updateMember: (memberId: string, updates: Partial<Member>) => {
@@ -1110,7 +1108,6 @@ export const useBillStore = create<BillState>()(
           ),
         };
         set((state) => ({ currentBill: updatedBill, history: withBillInHistory(state, updatedBill) }));
-        void get().saveBillToCloud(updatedBill);
       },
 
       saveCurrentMembersAsGroup: (name: string, selectedMembers?: Omit<Member, 'id'>[]) => {
