@@ -24,9 +24,17 @@ function ExpenseItemRow({ expense, item }: { expense: BillExpense; item: Expense
   const { locale } = useLocale();
   if (!currentBill) return null;
 
-  const members = Array.isArray(currentBill.timelineMembers)
-    ? currentBill.timelineMembers
-    : (Array.isArray(currentBill.members) ? currentBill.members : []);
+  // Timeline members can be stored separately, while participantIds may refer to
+  // members from the main bill. Merge both sources so every selected participant
+  // remains available when assigning an individual item.
+  const allMembers = [
+    ...(Array.isArray(currentBill.members) ? currentBill.members : []),
+    ...(Array.isArray(currentBill.timelineMembers) ? currentBill.timelineMembers : []),
+  ].filter((member, index, list) => list.findIndex((candidate) => candidate.id === member.id) === index);
+  const participantIds = Array.isArray(expense.participantIds) ? expense.participantIds : [];
+  const members = participantIds.length > 0
+    ? allMembers.filter((member) => participantIds.includes(member.id))
+    : allMembers;
   const assigned = Array.isArray(item.assignedMemberIds) ? item.assignedMemberIds : [];
   const total = (Number(item.price) || 0) * (Number(item.quantity) || 0);
   const isReadOnly = isBillReadOnly(currentBill, user?.id);
@@ -181,7 +189,10 @@ function ExpenseCard({ expense, index }: { expense: BillExpense; index: number }
   }, [isEditParticipantsOpen]);
 
   if (!currentBill) return null;
-  const members = Array.isArray(currentBill.members) ? currentBill.members : [];
+  const members = [
+    ...(Array.isArray(currentBill.members) ? currentBill.members : []),
+    ...(Array.isArray(currentBill.timelineMembers) ? currentBill.timelineMembers : []),
+  ].filter((member, index, list) => list.findIndex((candidate) => candidate.id === member.id) === index);
   const items = Array.isArray(expense.items) ? expense.items : [];
   const subtotal = items.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0), 0);
   const tax = subtotal * ((Number(expense.taxPercent) || 0) / 100);
@@ -228,7 +239,7 @@ function ExpenseCard({ expense, index }: { expense: BillExpense; index: number }
       <div className="absolute -left-[9px] top-6 h-4 w-4 rounded-full border-4 border-[#08100e] bg-emerald-400" aria-hidden="true" />
       
       {/* Header chặng */}
-      <div className="flex items-start gap-2">
+      <div className="flex flex-wrap items-start gap-2">
         <button
           type="button"
           onClick={() => setIsCollapsed(!isCollapsed)}
@@ -238,7 +249,7 @@ function ExpenseCard({ expense, index }: { expense: BillExpense; index: number }
           {isCollapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
         </button>
 
-        <div className="flex min-w-0 flex-1 items-center gap-2">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           <Clock3 className="h-4 w-4 shrink-0 text-emerald-400" />
           <input
             type="time"
@@ -254,7 +265,7 @@ function ExpenseCard({ expense, index }: { expense: BillExpense; index: number }
             disabled={isReadOnly}
             placeholder={t('expenseTitlePlaceholder', locale)}
             aria-label="Tên chặng"
-            className="field h-9 min-w-0 flex-1 px-2 text-sm font-semibold"
+            className="field h-9 min-w-[8rem] min-w-0 flex-1 px-2 text-sm font-semibold"
           />
           <button
             type="button"

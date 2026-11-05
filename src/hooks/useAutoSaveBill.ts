@@ -4,7 +4,7 @@ import { useAuthStore } from '../store/useAuthStore';
 
 export type SaveStatus = 'idle' | 'unsaved' | 'saving' | 'saved' | 'error';
 
-export function useAutoSaveBill(debounceMs = 600) {
+export function useAutoSaveBill(debounceMs = 1000) {
   const { currentBill, saveBillToCloud, syncError } = useBillStore();
   const { user } = useAuthStore();
 
@@ -34,7 +34,8 @@ export function useAutoSaveBill(debounceMs = 600) {
 
     const hasItems = Array.isArray(currentBill.items) && currentBill.items.length > 0;
     const hasMembers = Array.isArray(currentBill.members) && currentBill.members.length > 0;
-    const hasContent = hasItems || hasMembers;
+    const hasTimelineContent = Array.isArray(currentBill.expenses) && currentBill.expenses.length > 0;
+    const hasContent = hasItems || hasMembers || hasTimelineContent;
 
     if (!hasContent) {
       setStatus('idle');
@@ -53,6 +54,7 @@ export function useAutoSaveBill(debounceMs = 600) {
       splitMode: bill.splitMode || 'ITEMIZED',
       items: Array.isArray(bill.items) ? bill.items : [],
       members: Array.isArray(bill.members) ? bill.members : [],
+      timelineMembers: Array.isArray(bill.timelineMembers) ? bill.timelineMembers : [],
       expenses: Array.isArray(bill.expenses) ? bill.expenses : [],
       transfer_confirmations: bill.transfer_confirmations || {},
       settled_transfers: Array.isArray(bill.settled_transfers) ? bill.settled_transfers : [],
@@ -97,6 +99,7 @@ export function useAutoSaveBill(debounceMs = 600) {
     }
 
     timeoutRef.current = window.setTimeout(async () => {
+      timeoutRef.current = null;
       setStatus('saving');
       try {
         lastSavedJsonRef.current = currentJson;

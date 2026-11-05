@@ -1,8 +1,38 @@
-import type { Locale } from '../hooks/useLocale';
-import { t } from '../hooks/useLocale';
 import { calculateBillTotals, calculateMemberBreakdowns, calculateSettlements } from './calculations';
 import type { BillSession, Member } from '../types/bill';
-import { formatDate } from './formatters';
+
+
+const EXCEL_I18N = {
+  vi: {
+    billTitle: 'Tên hóa đơn', date: 'Ngày', currency: 'Loại tiền', grandTotal: 'Tổng cộng',
+    details: 'Chi tiết chi tiêu', item: 'Món / Khoản chi', stage: 'Chặng', payer: 'Người ứng tiền',
+    time: 'Thời gian', unitPrice: 'Đơn giá', quantity: 'Số lượng', total: 'Thành tiền',
+    participants: 'Người tham gia', settlements: 'Chuyển khoản / Bù trừ công nợ', sender: 'Người chuyển',
+    receiver: 'Người nhận', amount: 'Số tiền', noAssignment: 'Chưa gán', subtotal: 'Tổng tạm tính',
+  },
+  ru: {
+    billTitle: 'Название счёта', date: 'Дата', currency: 'Валюта', grandTotal: 'Общая сумма',
+    details: 'Детали расходов', item: 'Позиция / Расход', stage: 'Этап', payer: 'Оплатил', time: 'Время',
+    unitPrice: 'Цена за единицу', quantity: 'Количество', total: 'Сумма', participants: 'Участники',
+    settlements: 'Переводы / Долги', sender: 'Отправитель', receiver: 'Получатель', amount: 'Сумма',
+    noAssignment: 'Не назначено', subtotal: 'Промежуточный итог',
+  },
+  en: {
+    billTitle: 'Bill Title', date: 'Date', currency: 'Currency', grandTotal: 'Total Amount',
+    details: 'Expense Details', item: 'Item / Expense', stage: 'Stage', payer: 'Paid By', time: 'Time',
+    unitPrice: 'Unit Price', quantity: 'Qty', total: 'Total', participants: 'Participants',
+    settlements: 'Transfers / Debts', sender: 'Sender', receiver: 'Receiver', amount: 'Amount',
+    noAssignment: 'Unassigned', subtotal: 'Subtotal',
+  },
+  zh: {
+    billTitle: '账单名称', date: '日期', currency: '货币', grandTotal: '总金额', details: '费用明细',
+    item: '项目 / 费用', stage: '阶段', payer: '付款人', time: '时间', unitPrice: '单价', quantity: '数量',
+    total: '小计', participants: '参与人', settlements: '转账 / 结算', sender: '付款方', receiver: '收款方',
+    amount: '金额', noAssignment: '未分配', subtotal: '小计',
+  },
+} as const;
+
+type SupportedLocale = keyof typeof EXCEL_I18N;
 
 function escapeHtml(value: string | number): string {
   return String(value)
@@ -31,36 +61,57 @@ function memberNames(ids: string[] | undefined, members: Member[]): string {
 }
 
 export function exportBillToCsv(bill: BillSession, locale: string): void {
-  const supportedLocale: Locale = locale === 'vi' || locale === 'ru' || locale === 'zh' ? locale : 'en';
-  const label = (key: string) => t(key, supportedLocale);
-  const members = bill.mode === 'TIMELINE' && Array.isArray(bill.timelineMembers)
-    ? bill.timelineMembers
-    : bill.members;
+  const currentLocale: SupportedLocale = (['vi', 'ru', 'en', 'zh'].includes(locale) ? locale : 'vi') as SupportedLocale;
+  const dict = EXCEL_I18N[currentLocale];
+  const localeMap: Record<SupportedLocale, string> = {
+    vi: 'vi-VN',
+    ru: 'ru-RU',
+    zh: 'zh-CN',
+    en: 'en-US',
+  };
+  const formattedDate = new Intl.DateTimeFormat(localeMap[currentLocale], {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(new Date(bill.date || Date.now()));
+  const members = [
+    ...(Array.isArray(bill.members) ? bill.members : []),
+    ...(bill.mode === 'TIMELINE' && Array.isArray(bill.timelineMembers) ? bill.timelineMembers : []),
+  ].filter((member, index, list) => list.findIndex((candidate) => candidate.id === member.id) === index);
+
   const totals = calculateBillTotals(bill);
   const overviewRows = [
-    `<tr>${textCell(label('csvTitle'))}${textCell(bill.title || label('receiptTitle'))}</tr>`,
-    `<tr>${textCell(label('csvDate'))}${textCell(formatDate(bill.date, supportedLocale))}</tr>`,
-    `<tr>${textCell(label('csvCurrency'))}${textCell(bill.currency)}</tr>`,
-    `<tr>${textCell(label('csvTotal'))}${numberCell(totals.total)}</tr>`,
+    `<tr>${textCell(dict.billTitle)}${textCell(bill.title || dict.billTitle)}</tr>`,
+    `<tr>${textCell(dict.date)}${textCell(formattedDate)}</tr>`,
+    `<tr>${textCell(dict.currency)}${textCell(bill.currency)}</tr>`,
+    `<tr>${textCell(dict.grandTotal)}${numberCell(totals.total)}</tr>`,
   ].join('');
 
   let detailRows = '';
   if (bill.mode === 'TIMELINE') {
-    detailRows += `<tr>${headerCell(label('csvExpense'))}${headerCell(label('csvPayer'))}${headerCell(label('csvAmount'))}${headerCell(label('csvBeneficiaries'))}</tr>`;
-    for (const expense of bill.expenses || []) {
-      const subtotal = (expense.items || []).reduce(
+    for (const [index, expense] of (bill.expenses || []).entries()) {
+      const payerName = members.find((member) => member.id === expense.payerId)?.name || '';
+      const participantNames = memberNames(expense.participantIds, members);
+      detailRows += `<tr class="expense-heading"><th colspan="5">${escapeHtml(`${dict.stage} ${index + 1}: ${expense.title || ''} | ${dict.payer}: ${payerName || dict.noAssignment} | ${dict.time}: ${expense.time || dict.noAssignment}`)}</th></tr>`;
+      detailRows += `<tr>${headerCell(dict.item)}${headerCell(dict.unitPrice)}${headerCell(dict.quantity)}${headerCell(dict.total)}${headerCell(dict.participants)}</tr>`;
+      for (const item of expense.items || []) {
+        const price = Number(item.price) || 0;
+        const quantity = Number(item.quantity) || 0;
+        const itemParticipants = item.assignedMemberIds?.length ? item.assignedMemberIds : expense.participantIds;
+        detailRows += `<tr>${textCell(item.name)}${numberCell(price)}${numberCell(quantity)}${numberCell(price * quantity)}${textCell(memberNames(itemParticipants, members) || participantNames || dict.noAssignment)}</tr>`;
+      }
+      const expenseSubtotal = (expense.items || []).reduce(
         (sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0),
         0,
       );
-      const amount = subtotal * (1 + (Number(expense.taxPercent) || 0) / 100 + (Number(expense.tipPercent) || 0) / 100);
-      detailRows += `<tr>${textCell(expense.title || '')}${textCell(members.find((member) => member.id === expense.payerId)?.name || '')}${numberCell(amount)}${textCell(Array.isArray(expense.participantIds) ? memberNames(expense.participantIds, members) : '')}</tr>`;
+      detailRows += `<tr class="subtotal-row">${textCell(dict.subtotal)}${textCell('')}${textCell('')}${numberCell(expenseSubtotal)}${textCell('')}</tr>`;
     }
   } else {
-    detailRows += `<tr>${headerCell(label('csvItem'))}${headerCell(label('csvUnitPrice'))}${headerCell(label('csvQuantity'))}${headerCell(label('csvAmount'))}${headerCell(label('csvParticipants'))}</tr>`;
+    detailRows += `<tr>${headerCell(dict.item)}${headerCell(dict.unitPrice)}${headerCell(dict.quantity)}${headerCell(dict.total)}${headerCell(dict.participants)}</tr>`;
     for (const item of bill.items || []) {
       const price = Number(item.price) || 0;
       const quantity = Number(item.quantity) || 0;
-      detailRows += `<tr>${textCell(item.name)}${numberCell(price)}${numberCell(quantity)}${numberCell(price * quantity)}${textCell(memberNames(item.assignedMemberIds, members))}</tr>`;
+      detailRows += `<tr>${textCell(item.name)}${numberCell(price)}${numberCell(quantity)}${numberCell(price * quantity)}${textCell(memberNames(item.assignedMemberIds, members) || dict.noAssignment)}</tr>`;
     }
   }
 
@@ -68,7 +119,7 @@ export function exportBillToCsv(bill: BillSession, locale: string): void {
   let settlementTable = '';
   if (settlements.length > 0) {
     const settlementRows = settlements.map((settlement) => `<tr>${textCell(members.find((member) => member.id === settlement.fromMemberId)?.name || '')}${textCell(members.find((member) => member.id === settlement.toMemberId)?.name || '')}${numberCell(settlement.amount)}</tr>`).join('');
-    settlementTable = `<h2>${escapeHtml(label('csvTransfers'))}</h2><table><tr>${headerCell(label('csvSender'))}${headerCell(label('csvRecipient'))}${headerCell(label('csvAmount'))}</tr>${settlementRows}</table>`;
+    settlementTable = `<h2>${escapeHtml(dict.settlements)}</h2><table><tr>${headerCell(dict.sender)}${headerCell(dict.receiver)}${headerCell(dict.amount)}</tr>${settlementRows}</table>`;
   }
 
   const template = `<!DOCTYPE html>
@@ -86,9 +137,9 @@ export function exportBillToCsv(bill: BillSession, locale: string): void {
   </style>
 </head>
 <body>
-  <h1>${escapeHtml(bill.title || label('receiptTitle'))}</h1>
+  <h1>${escapeHtml(bill.title || dict.billTitle)}</h1>
   <table>${overviewRows}</table>
-  <h2>${escapeHtml(label('csvDetails'))}</h2>
+  <h2>${escapeHtml(dict.details)}</h2>
   <table>${detailRows}</table>
   ${settlementTable}
 </body>
