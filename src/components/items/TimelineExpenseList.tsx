@@ -239,54 +239,62 @@ function ExpenseCard({ expense, index }: { expense: BillExpense; index: number }
       <div className="absolute -left-[9px] top-6 h-4 w-4 rounded-full border-4 border-[#08100e] bg-emerald-400" aria-hidden="true" />
       
       {/* Header chặng */}
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setIsCollapsed(!isCollapsed)}
-          className="shrink-0 text-neutral-400 transition hover:text-white cursor-pointer"
-          title={isCollapsed ? 'Mở rộng chặng' : 'Thu gọn chặng'}
-        >
-          {isCollapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
-        </button>
-        <Clock3 className="h-4 w-4 shrink-0 text-emerald-400" />
-        <input
-          type="time"
-          value={expense.time}
-          onChange={(e) => updateExpense(expense.id, { time: e.target.value })}
-          disabled={isReadOnly}
-          aria-label={`${t('timeLabel', locale)} ${index + 1}`}
-          className="field h-9 w-[6.5rem] shrink-0 px-2 text-sm num"
-        />
-        <input
-          value={expense.title}
-          onChange={(e) => updateExpense(expense.id, { title: e.target.value })}
-          disabled={isReadOnly}
-          placeholder={t('expenseTitlePlaceholder', locale)}
-          aria-label="Tên chặng"
-          className="field h-9 min-w-0 flex-1 px-2 text-sm font-semibold"
-        />
-        {!isReadOnly && (
+      {/* Header chặng: thanh công cụ và tên chặng được tách thành hai hàng */}
+      <div className="flex min-w-0 items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           <button
             type="button"
-            onClick={() => {
-              if (window.confirm(t('deleteExpenseConfirm', locale))) removeExpense(expense.id);
-            }}
-            className="icon-btn shrink-0 hover:bg-danger-soft hover:text-danger cursor-pointer"
-            aria-label={t('deleteExpenseConfirm', locale)}
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className="shrink-0 text-neutral-400 transition hover:text-white cursor-pointer"
+            title={isCollapsed ? 'Mở rộng chặng' : 'Thu gọn chặng'}
+            aria-label={isCollapsed ? 'Mở rộng chặng' : 'Thu gọn chặng'}
           >
-            <Trash2 className="h-4 w-4" />
+            {isCollapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
           </button>
-        )}
-        <button
-          type="button"
-          onClick={() => setIsScanOpen(true)}
-          disabled={isReadOnly}
-          className="btn btn-secondary ml-9 h-9 shrink-0 px-2.5 text-xs cursor-pointer sm:ml-9"
-        >
-          <ScanLine className="h-3.5 w-3.5" />
-          {t('scanBill', locale)}
-        </button>
+          <Clock3 className="h-4 w-4 shrink-0 text-emerald-400" aria-hidden="true" />
+          <input
+            type="time"
+            value={expense.time}
+            onChange={(e) => updateExpense(expense.id, { time: e.target.value })}
+            disabled={isReadOnly}
+            aria-label={`${t('timeLabel', locale)} ${index + 1}`}
+            className="field h-9 min-w-[125px] w-32 shrink-0 px-2 text-sm num"
+          />
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setIsScanOpen(true)}
+            disabled={isReadOnly}
+            className="btn btn-secondary h-9 w-9 rounded-lg p-2 cursor-pointer"
+            aria-label={t('scanBill', locale)}
+            title={t('scanBill', locale)}
+          >
+            <ScanLine className="h-4 w-4" aria-hidden="true" />
+          </button>
+          {!isReadOnly && (
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm(t('deleteExpenseConfirm', locale))) removeExpense(expense.id);
+              }}
+              className="icon-btn h-9 w-9 rounded-lg text-red-400 hover:bg-red-500/10 hover:text-red-300 cursor-pointer"
+              aria-label={t('deleteExpenseConfirm', locale)}
+              title={t('deleteExpenseConfirm', locale)}
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          )}
+        </div>
       </div>
+      <input
+        value={expense.title}
+        onChange={(e) => updateExpense(expense.id, { title: e.target.value })}
+        disabled={isReadOnly}
+        placeholder={t('expenseTitlePlaceholder', locale)}
+        aria-label="Tên chặng"
+        className="field mt-2 h-9 w-full px-2 text-sm font-semibold"
+      />
 
       {isCollapsed ? (
         <div className="mt-3 flex items-center justify-between border-t border-line/40 pt-2 text-xs text-ink-3">
