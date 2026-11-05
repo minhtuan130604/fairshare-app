@@ -1,5 +1,5 @@
 
-import { Download, Copy, Check, Link2, Users, QrCode, Smartphone, Share2 } from 'lucide-react';
+import { Download, Copy, Check, Users, QrCode, Smartphone, Share2 } from 'lucide-react';
 import { useBillStore } from '../../store/useBillStore';
 import { useAuthStore } from '../../store/useAuthStore';
 import { calculateMemberBreakdowns, calculateSettlements } from '../../utils/calculations';
@@ -21,7 +21,6 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
   const { user } = useAuthStore();
   const { locale } = useLocale();
   const [copied, setCopied] = useState(false);
-  const [urlCopied, setUrlCopied] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [isShareFriendsOpen, setIsShareFriendsOpen] = useState(false);
   const [selectedMemberId, setSelectedMemberId] = useState<string>('');
@@ -140,25 +139,23 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
 
   const getShareURL = () => `${window.location.origin}/bill/${encodeURIComponent(currentBill.id)}`;
 
-  const handleCopyURL = async () => {
-    const url = getShareURL();
-
-    try {
-      await navigator.clipboard.writeText(url);
-      setUrlCopied(true);
-      setTimeout(() => setUrlCopied(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy URL:', err);
-    }
-  };
-
   const handleShareURL = async () => {
-    const url = `${window.location.origin}/bill/${encodeURIComponent(currentBill.id)}`;
+    const shareUrl = getShareURL();
     if (typeof navigator.share === 'function') {
-      try { await navigator.share({ title: currentBill.title || 'FairShare', text: generateTextSummary(), url }); return; }
-      catch (error) { if (error instanceof DOMException && error.name === 'AbortError') return; }
+      try {
+        await navigator.share({ title: currentBill.title || 'FairShare', url: shareUrl });
+        return;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+      }
     }
-    await handleCopyURL();
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      console.error('Failed to copy share URL:', error);
+    }
   };
 
   const handleExportImage = async () => {
@@ -215,19 +212,10 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
         </button>
       </div>
 
-      <div className="flex items-center gap-2 rounded-xl border border-line bg-surface-2 p-1.5">
-        <Link2 className="ml-2 h-4 w-4 shrink-0 text-ink-3" />
-        <input readOnly value={getShareURL()} aria-label={t('copyShareLink', locale)} className="min-w-0 flex-1 bg-transparent px-1 text-xs text-ink-2 outline-none" />
-        <button type="button" onClick={handleCopyURL} className="btn btn-secondary shrink-0 px-3 py-2 text-xs cursor-pointer" aria-label={t('copyShareLink', locale)}>
-          {urlCopied ? <Check className="h-4 w-4 text-accent" /> : <Copy className="h-4 w-4" />}
-          <span className="sr-only">{urlCopied ? t('copiedLink', locale) : t('copyShareLink', locale)}</span>
-        </button>
-      </div>
       <button type="button" onClick={handleShareURL} className="btn btn-primary w-full cursor-pointer">
-        <Share2 className="w-4 h-4" />
-        {t('shareBill', locale)}
+        {copied ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
+        {copied ? t('copiedLink', locale) : t('shareBill', locale)}
       </button>
-      <p className="text-xs text-ink-3 text-center">{t('shareLinkDesc', locale)}</p>
     </div>
   );
 
