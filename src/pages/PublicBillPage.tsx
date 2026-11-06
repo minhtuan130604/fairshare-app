@@ -9,9 +9,13 @@ import { useLocale, t } from '../hooks/useLocale';
 
 interface PublicBillPageProps { billId: string }
 type PublicProfile = {
-  display_name?: string; bank_name?: string; account_number?: string; account_holder?: string;
-  russia_bank?: string; russia_account_holder?: string; phone_number?: string;
+  name?: string; display_name?: string; bank_name?: string; account_number?: string; account_holder?: string;
+  russia_bank?: string; russia_account_holder?: string; phone_number?: string; sbp_phone?: string;
   custom_qr_url?: string; russia_qr_url?: string;
+};
+type PaymentMember = Member & {
+  userId?: string; user_id?: string; sbp_phone?: string;
+  payment_info?: Partial<PublicProfile>;
 };
 
 const normalizeRussianPhone = (phone: string) => {
@@ -81,11 +85,25 @@ export function PublicBillPage({ billId }: PublicBillPageProps) {
         if (!billRow) { if (active) setStatus('missing'); return; }
         const loadedBill = normaliseBill(billRow as Record<string, unknown>);
         let loadedProfile: PublicProfile | null = null;
-        const profileUserId = billRow.user_id || loadedBill.user_id;
-        if (profileUserId) {
-          const result = await supabase.from('profiles').select('*').eq('id', profileUserId).maybeSingle();
-          if (result.error) console.warn('Unable to load bill owner profile:', result.error.message);
-          loadedProfile = result.data as PublicProfile | null;
+        const profileIds = new Set<string>();
+        const ownerId = String(billRow.user_id || loadedBill.user_id || '').trim();
+        if (ownerId) profileIds.add(ownerId);
+        for (const member of [...(loadedBill.members || []), ...(loadedBill.timelineMembers || [])] as PaymentMember[]) {
+          const memberUserId = String(member.userId || member.user_id || '').trim();
+          if (memberUserId) profileIds.add(memberUserId);
+        }
+        if (profileIds.size) {
+          const result = await supabase.from('profiles').select('*').in('id', [...profileIds]);
+          if (result.error) console.warn('Unable to load public payment profiles:', result.error.message);
+          const profiles = (result.data || []) as (PublicProfile & { id?: string })[];
+          loadedProfile = profiles.find((item) => item.id === ownerId) || profiles[0] || null;
+          if (profiles.length) {
+            const profileById = new Map(profiles.map((item) => [String(item.id), item]));
+            for (const member of [...(loadedBill.members || []), ...(loadedBill.timelineMembers || [])] as PaymentMember[]) {
+              const memberUserId = String(member.userId || member.user_id || '').trim();
+              if (memberUserId) (member as PaymentMember & { payment_profile?: PublicProfile }).payment_profile = profileById.get(memberUserId);
+            }
+          }
         }
         if (active) {
           setBill(loadedBill); setProfile(loadedProfile); setOffline(false); setStatus('ready');
@@ -130,62 +148,67 @@ export function PublicBillPage({ billId }: PublicBillPageProps) {
   const isRub = bill?.currency === 'RUB';
   const paymentMembers = bill?.mode === 'TIMELINE' ? bill.timelineMembers || bill.members || [] : bill?.members || [];
   const payerMember = paymentMembers.find((member) => member.id === payerId);
-  const payerProfile = payerMember ? {
-    display_name: payerMember.name,
-    bank_name: payerMember.bank_name,
-    account_number: payerMember.account_number,
-    account_holder: payerMember.account_holder,
-    russia_bank: payerMember.russia_bank,
-    russia_account_holder: payerMember.russia_account_holder,
-    phone_number: payerMember.phone_number,
-    custom_qr_url: payerMember.custom_qr_url,
-    russia_qr_url: payerMember.russia_qr_url,
+  const payerPaymentMember = payerMember as PaymentMember | undefined;
+  const payerMemberInfo = payerPaymentMember?.payment_info || {};
+  const payerProfile = payerPaymentMember ? {
+    ...payerMemberInfo,
+    ...payerPaymentMember,
+    ...(payerPaymentMember as PaymentMember & { payment_profile?: PublicProfile }).payment_profile,
+    display_name: payerPaymentMember.name,
   } : null;
-  const payerUserId = (payerMember as (Member & { userId?: string; user_id?: string }) | undefined)?.userId
-    || (payerMember as (Member & { userId?: string; user_id?: string }) | undefined)?.user_id;
+  const payerUserId = payerPaymentMember?.userId || payerPaymentMember?.user_id;
   const ownerMatchesPayer = Boolean(payerMember && (
     (payerUserId && bill?.user_id && payerUserId === bill.user_id) ||
     (profile?.display_name && payerMember.name.trim().toLocaleLowerCase() === profile.display_name.trim().toLocaleLowerCase())
   ));
+  const ownerProfile = ownerMatchesPayer ? profile : null;
   const recipientProfile: PublicProfile = {
-    display_name: payerProfile?.display_name || (ownerMatchesPayer ? profile?.display_name : undefined),
-    bank_name: payerProfile?.bank_name || (ownerMatchesPayer ? profile?.bank_name : undefined),
-    account_number: payerProfile?.account_number || (ownerMatchesPayer ? profile?.account_number : undefined),
-    account_holder: payerProfile?.account_holder || (ownerMatchesPayer ? profile?.account_holder : undefined),
-    russia_bank: payerProfile?.russia_bank || (ownerMatchesPayer ? profile?.russia_bank : undefined),
-    russia_account_holder: payerProfile?.russia_account_holder || (ownerMatchesPayer ? profile?.russia_account_holder : undefined),
-    phone_number: payerProfile?.phone_number || (ownerMatchesPayer ? profile?.phone_number : undefined),
-    custom_qr_url: payerProfile?.custom_qr_url || (ownerMatchesPayer ? profile?.custom_qr_url : undefined),
-    russia_qr_url: payerProfile?.russia_qr_url || (ownerMatchesPayer ? profile?.russia_qr_url : undefined),
+    ...ownerProfile,
+    ...payerProfile,
+    display_name: payerProfile?.display_name || ownerProfile?.display_name,
+    bank_name: payerProfile?.bank_name || ownerProfile?.bank_name,
+    account_number: payerProfile?.account_number || ownerProfile?.account_number,
+    account_holder: payerProfile?.account_holder || ownerProfile?.account_holder,
+    russia_bank: payerProfile?.russia_bank || ownerProfile?.russia_bank,
+    russia_account_holder: payerProfile?.russia_account_holder || ownerProfile?.russia_account_holder,
+    phone_number: payerProfile?.phone_number || ownerProfile?.phone_number,
+    sbp_phone: payerProfile?.sbp_phone || ownerProfile?.sbp_phone,
+    custom_qr_url: payerProfile?.custom_qr_url || ownerProfile?.custom_qr_url,
+    russia_qr_url: payerProfile?.russia_qr_url || ownerProfile?.russia_qr_url,
   };
-  const recipientBank = isRub ? recipientProfile.russia_bank : recipientProfile.bank_name;
-  const bankDisplayName = recipientBank || '—';
-  const recipientName = isRub
-    ? recipientProfile.russia_account_holder || recipientProfile.account_holder || payerMember?.name || (ownerMatchesPayer ? profile?.display_name : undefined)
-    : recipientProfile.account_holder || payerMember?.name || (ownerMatchesPayer ? profile?.display_name : undefined);
-  const recipientAccount = isRub ? recipientProfile.phone_number : recipientProfile.account_number;
-  const paymentDetails = [recipientName, recipientBank, recipientAccount].filter(Boolean).join('\n');
+  const recipientMember = payerMember;
+  const isRussia = isRub;
+  const recipientName = recipientProfile?.russia_account_holder || recipientProfile?.account_holder || recipientMember?.name || (bill as (BillSession & { creator_name?: string }) | null)?.creator_name || '—';
+  const recipientBank = isRussia ? (recipientProfile?.russia_bank || '—') : (recipientProfile?.bank_name || '—');
+  const recipientAccount = isRussia ? (recipientProfile?.phone_number || recipientProfile?.sbp_phone || '—') : (recipientProfile?.account_number || '—');
+  const bankDisplayName = recipientBank;
+  const paymentDetails = [
+    `${t('recipient_label', locale)} ${recipientName}`,
+    `${t('bank_label', locale)} ${recipientBank}`,
+    `${t('account_or_phone_label', locale)} ${recipientAccount}`,
+  ].join('\n');
 
   const showPaymentSection = selectedMemberId === 'all' || !isSelectedPayer;
   const formatAmount = (amount: number) => formatCurrency(amount, bill?.currency, locale);
-  const hasVietAccount = Boolean(recipientProfile.bank_name && recipientProfile.account_number);
-  const qrUrl = isRub ? recipientProfile.russia_qr_url || recipientProfile.custom_qr_url || '' : hasVietAccount
-    ? `https://img.vietqr.io/image/${recipientProfile.bank_name}-${recipientProfile.account_number}-compact2.png?amount=${Math.round(selectedBreakdown?.totalOwed || totals?.total || 0)}&addInfo=${encodeURIComponent(bill?.title || 'FairShare')}&accountName=${encodeURIComponent(recipientName || '')}`
-    : recipientProfile.custom_qr_url || '';
   const copyValue = async (value: string, key: string) => {
-    if (!value) return;
+    if (!value || value === '—') return;
     await navigator.clipboard.writeText(value);
     setCopiedKey(key);
     window.setTimeout(() => setCopiedKey((current) => current === key ? null : current), 2000);
   };
-  const normalizedPhone = recipientProfile.phone_number ? normalizeRussianPhone(recipientProfile.phone_number) : '';
+  const qrUrl = isRussia
+    ? (recipientProfile?.russia_qr_url || recipientProfile?.custom_qr_url || '')
+    : (recipientProfile?.bank_name && recipientProfile?.account_number
+        ? `https://img.vietqr.io/image/${recipientProfile.bank_name}-${recipientProfile.account_number}-compact2.png?amount=${Math.round(selectedBreakdown?.totalOwed || totals?.total || 0)}&addInfo=${encodeURIComponent(bill?.title || 'FairShare')}&accountName=${encodeURIComponent(recipientName || '')}`
+        : (recipientProfile?.custom_qr_url || ''));
+  const normalizedPhone = recipientAccount !== '—' ? normalizeRussianPhone(recipientAccount) : '';
   const amountToCopy = Math.round(isSelectedPayer ? amountReceived : (amountToPayPayer || selectedBreakdown?.totalOwed || totals?.total || 0));
-  const copyAccount = () => copyValue(isRub ? normalizedPhone : (recipientProfile.account_number || ''), 'account');
+  const copyAccount = () => copyValue(isRussia ? normalizedPhone : recipientAccount, 'account');
   const copyAmount = () => copyValue(String(amountToCopy), 'amount');
   const copyAll = async () => {
-    if (!paymentDetails) return;
-    await navigator.clipboard.writeText(`${paymentDetails}\n${t('total_bill_tab', locale)}: ${amountToCopy}\n${bill?.title || ''}`);
-    setCopied(true); window.setTimeout(() => setCopied(false), 2000);
+    await copyValue(`${paymentDetails}\n${t('total_bill_tab', locale)}: ${amountToCopy}\n${bill?.title || ''}`, 'all');
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2000);
   };
   const dismissPwa = () => { setPwaVisible(false); try { sessionStorage.setItem('fairshare_pwa_banner_dismissed', 'true'); } catch { /* storage may be unavailable */ } };
   const installPwa = async () => {
