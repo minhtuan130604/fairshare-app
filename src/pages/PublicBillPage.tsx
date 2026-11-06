@@ -156,36 +156,37 @@ export function PublicBillPage({ billId }: PublicBillPageProps) {
     ...(payerPaymentMember as PaymentMember & { payment_profile?: PublicProfile }).payment_profile,
     display_name: payerPaymentMember.name,
   } : null;
-  const payerUserId = payerPaymentMember?.userId || payerPaymentMember?.user_id;
-  const ownerMatchesPayer = Boolean(payerMember && (
-    (payerUserId && bill?.user_id && payerUserId === bill.user_id) ||
-    (profile?.display_name && payerMember.name.trim().toLocaleLowerCase() === profile.display_name.trim().toLocaleLowerCase())
-  ));
-  const ownerProfile = ownerMatchesPayer ? profile : null;
+  const ownerProfile = profile || null;
   const recipientProfile: PublicProfile = {
-    ...ownerProfile,
-    ...payerProfile,
-    display_name: payerProfile?.display_name || ownerProfile?.display_name,
-    bank_name: payerProfile?.bank_name || ownerProfile?.bank_name,
-    account_number: payerProfile?.account_number || ownerProfile?.account_number,
-    account_holder: payerProfile?.account_holder || ownerProfile?.account_holder,
-    russia_bank: payerProfile?.russia_bank || ownerProfile?.russia_bank,
-    russia_account_holder: payerProfile?.russia_account_holder || ownerProfile?.russia_account_holder,
-    phone_number: payerProfile?.phone_number || ownerProfile?.phone_number,
-    sbp_phone: payerProfile?.sbp_phone || ownerProfile?.sbp_phone,
-    custom_qr_url: payerProfile?.custom_qr_url || ownerProfile?.custom_qr_url,
-    russia_qr_url: payerProfile?.russia_qr_url || ownerProfile?.russia_qr_url,
+    ...(ownerProfile || {}),
+    ...(payerProfile || {}),
+    display_name: payerProfile?.display_name || profile?.display_name,
+    russia_bank: payerProfile?.russia_bank || profile?.russia_bank,
+    russia_account_holder: payerProfile?.russia_account_holder || profile?.russia_account_holder,
+    phone_number: payerProfile?.phone_number || profile?.phone_number,
+    sbp_phone: payerProfile?.sbp_phone || profile?.sbp_phone,
+    bank_name: payerProfile?.bank_name || profile?.bank_name,
+    account_number: payerProfile?.account_number || profile?.account_number,
+    account_holder: payerProfile?.account_holder || profile?.account_holder,
+    russia_qr_url: payerProfile?.russia_qr_url || profile?.russia_qr_url,
+    custom_qr_url: payerProfile?.custom_qr_url || profile?.custom_qr_url,
   };
   const recipientMember = payerMember;
   const isRussia = isRub;
-  const recipientName = recipientProfile?.russia_account_holder || recipientProfile?.account_holder || recipientMember?.name || (bill as (BillSession & { creator_name?: string }) | null)?.creator_name || '—';
-  const recipientBank = isRussia ? (recipientProfile?.russia_bank || '—') : (recipientProfile?.bank_name || '—');
-  const recipientAccount = isRussia ? (recipientProfile?.phone_number || recipientProfile?.sbp_phone || '—') : (recipientProfile?.account_number || '—');
-  const bankDisplayName = recipientBank;
+  const recipientName = isRub
+    ? (recipientProfile.russia_account_holder || recipientProfile.account_holder || recipientProfile.display_name || recipientProfile.name || recipientMember?.name || (bill as (BillSession & { creator_name?: string }) | null)?.creator_name || 'Chủ hóa đơn')
+    : (recipientProfile.account_holder || recipientProfile.display_name || recipientProfile.name || recipientMember?.name || (bill as (BillSession & { creator_name?: string }) | null)?.creator_name || 'Chủ hóa đơn');
+  const recipientBank = isRub
+    ? (recipientProfile.russia_bank || recipientProfile.bank_name || '')
+    : (recipientProfile.bank_name || '');
+  const bankDisplayName = recipientBank || '—';
+  const recipientAccount = isRub
+    ? (recipientProfile.phone_number || recipientProfile.sbp_phone || recipientProfile.account_number || '')
+    : (recipientProfile.account_number || '');
   const paymentDetails = [
-    `${t('recipient_label', locale)} ${recipientName}`,
-    `${t('bank_label', locale)} ${recipientBank}`,
-    `${t('account_or_phone_label', locale)} ${recipientAccount}`,
+    `${t('recipient_label', locale)} ${recipientName || '—'}`,
+    `${t('bank_label', locale)} ${bankDisplayName}`,
+    `${t('account_or_phone_label', locale)} ${recipientAccount || '—'}`,
   ].join('\n');
 
   const showPaymentSection = selectedMemberId === 'all' || !isSelectedPayer;
@@ -201,7 +202,7 @@ export function PublicBillPage({ billId }: PublicBillPageProps) {
     : (recipientProfile?.bank_name && recipientProfile?.account_number
         ? `https://img.vietqr.io/image/${recipientProfile.bank_name}-${recipientProfile.account_number}-compact2.png?amount=${Math.round(selectedBreakdown?.totalOwed || totals?.total || 0)}&addInfo=${encodeURIComponent(bill?.title || 'FairShare')}&accountName=${encodeURIComponent(recipientName || '')}`
         : (recipientProfile?.custom_qr_url || ''));
-  const normalizedPhone = recipientAccount !== '—' ? normalizeRussianPhone(recipientAccount) : '';
+  const normalizedPhone = recipientAccount ? normalizeRussianPhone(recipientAccount) : '';
   const amountToCopy = Math.round(isSelectedPayer ? amountReceived : (amountToPayPayer || selectedBreakdown?.totalOwed || totals?.total || 0));
   const copyAccount = () => copyValue(isRussia ? normalizedPhone : recipientAccount, 'account');
   const copyAmount = () => copyValue(String(amountToCopy), 'amount');
@@ -254,10 +255,10 @@ export function PublicBillPage({ billId }: PublicBillPageProps) {
         </section>
         {showPaymentSection && <section className="rounded-3xl border border-line bg-surface p-5">
           <h2 className="flex items-center gap-2 text-lg font-semibold"><CreditCard className="h-5 w-5 text-accent" /> {t('transfer_info_title', locale)}</h2>
+           <div className="mt-4 space-y-2 text-sm text-ink-2"><p>{t('recipient_label', locale)} <strong className="text-ink">{recipientName || '—'}</strong></p><p>{t('bank_label', locale)} <strong className="text-ink">{bankDisplayName}</strong></p><p>{t('account_or_phone_label', locale)} <strong className="text-ink">{recipientAccount || '—'}</strong></p></div>
           {qrUrl && <img src={qrUrl} alt="Mã QR thanh toán" className="mx-auto mt-4 h-56 w-56 rounded-xl object-contain" />}
-          <div className="mt-4 space-y-2 text-sm text-ink-2"><p>{t('recipient_label', locale)} <strong className="text-ink">{recipientName || payerMember?.name || '—'}</strong></p><p>{t('bank_label', locale)} <strong className="text-ink">{bankDisplayName}</strong></p><p>{t('account_or_phone_label', locale)} <strong className="text-ink">{recipientAccount || '—'}</strong></p></div>
           <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <button type="button" onClick={() => void copyAccount()} disabled={!(isRub ? normalizedPhone : recipientProfile.account_number)} className="flex min-w-0 items-center justify-center gap-2 rounded-xl border border-line px-3 py-3 text-center text-xs font-semibold hover:bg-surface-2 disabled:opacity-50">{copiedKey === 'account' ? <Check className="h-4 w-4 shrink-0 text-accent" /> : <Copy className="h-4 w-4 shrink-0" />}{copiedKey === 'account' ? t('copied', locale) : t(isRub ? 'copy_phone_sbp' : 'copy_account_number', locale)}</button>
+            <button type="button" onClick={() => void copyAccount()} disabled={!recipientAccount} className="flex min-w-0 items-center justify-center gap-2 rounded-xl border border-line px-3 py-3 text-center text-xs font-semibold hover:bg-surface-2 disabled:opacity-50">{copiedKey === 'account' ? <Check className="h-4 w-4 shrink-0 text-accent" /> : <Copy className="h-4 w-4 shrink-0" />}{copiedKey === 'account' ? t('copied', locale) : t(isRub ? 'copy_phone_sbp' : 'copy_account_number', locale)}</button>
             <button type="button" onClick={() => void copyAmount()} className="flex min-w-0 items-center justify-center gap-2 rounded-xl border border-line px-3 py-3 text-center text-xs font-semibold hover:bg-surface-2">{copiedKey === 'amount' ? <Check className="h-4 w-4 shrink-0 text-accent" /> : <Copy className="h-4 w-4 shrink-0" />}{copiedKey === 'amount' ? t('copied_amount', locale) : t('copy_amount', locale, { amount: formatAmount(amountToCopy) })}</button>
           </div>
           <button type="button" onClick={() => void copyAll()} className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-line px-4 py-2.5 text-sm font-semibold hover:bg-surface-2">{copied ? <Check className="h-4 w-4 text-accent" /> : <Copy className="h-4 w-4" />}{copied ? t('copied', locale) : t('copy_bank_info', locale)}</button>
