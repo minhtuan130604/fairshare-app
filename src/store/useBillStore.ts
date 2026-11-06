@@ -533,8 +533,8 @@ export const useBillStore = create<BillState>()(
             .eq('id', currentBill.id);
           if (billUpdateError) throw billUpdateError;
 
-          // Bắn thông báo nếu người chuyển báo đã gửi tiền
-          if (role === 'payer' && newConfirmation.payerConfirmed) {
+          // Bắn thông báo hoặc dọn thông báo khi người chuyển thay đổi trạng thái.
+          if (role === 'payer') {
             const currentUser = useAuthStore.getState().user;
             const currentProfile = useProfileStore.getState().profile;
             const senderName = currentProfile?.display_name || currentUser?.user_metadata?.display_name || 'Bạn bè';
@@ -545,17 +545,27 @@ export const useBillStore = create<BillState>()(
               receiverMemberId !== currentUser?.id &&
               isValidUUID(receiverMemberId)
             ) {
-              const { error: notificationError } = await supabase
+              const { error: deleteError } = await supabase
                 .from('notifications')
-                .insert({
-                  user_id: receiverMemberId,
-                  type: 'transfer_reported',
-                  description: `${senderName} đã báo chuyển tiền cho hóa đơn "${currentBill.title || 'Hóa đơn'}".`,
-                  data: { billId: currentBill.id, transferKey },
-                  is_read: false,
-                  created_at: new Date().toISOString(),
-                });
-              if (notificationError) throw notificationError;
+                .delete()
+                .eq('user_id', receiverMemberId)
+                .eq('type', 'transfer_reported')
+                .contains('data', { billId: currentBill.id });
+              if (deleteError) throw deleteError;
+
+              if (newConfirmation.payerConfirmed) {
+                const { error: notificationError } = await supabase
+                  .from('notifications')
+                  .insert({
+                    user_id: receiverMemberId,
+                    type: 'transfer_reported',
+                    description: `${senderName} đã báo chuyển tiền cho hóa đơn "${currentBill.title || 'Hóa đơn'}".`,
+                    data: { billId: currentBill.id, transferKey },
+                    is_read: false,
+                    created_at: new Date().toISOString(),
+                  });
+                if (notificationError) throw notificationError;
+              }
             }
           }
         } catch (err) {

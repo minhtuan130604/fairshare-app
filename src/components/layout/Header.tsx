@@ -61,13 +61,44 @@ export function Header({ activePage, onNavigate }: HeaderProps) {
   const { theme, toggleTheme, currentBill, history, loadBillFromHistory } = useBillStore();
   const { locale } = useLocale();
 
-  const getLocalizedNotificationText = (notification: { title: string; description: string; data?: { i18n?: Partial<Record<'vi' | 'en' | 'ru' | 'zh', { title?: string; description?: string }>> } }) => {
+  const getLocalizedNotificationText = (notification: {
+    type?: string;
+    title: string;
+    description: string;
+    data?: {
+      i18n?: Partial<Record<'vi' | 'en' | 'ru' | 'zh', { title?: string; description?: string }>>;
+    };
+  }) => {
     const translation = notification.data?.i18n?.[locale];
+    const transferReportedTitles = {
+      vi: 'Báo chuyển tiền',
+      ru: 'Уведомление о переводе',
+      en: 'Transfer Reported',
+      zh: '转账通知',
+    } as const;
+    const knownTypeTitles: Record<string, string> = {
+      bill_shared: t('billSharedTitle', locale),
+      system_announcement: t('notificationTitle', locale),
+      support_reply: t('notificationTitle', locale),
+      friend_request: t('notificationTitle', locale),
+    };
+    const notifType = notification.type || '';
+    const isTransferReported =
+      notifType === 'transfer_reported' || notification.title === 'transfer_reported';
+
     return {
-      title: translation?.title || notification.title,
+      title:
+        translation?.title ||
+        (isTransferReported
+          ? transferReportedTitles[locale]
+          : knownTypeTitles[notifType] ||
+            (notification.title && notification.title !== notifType
+              ? notification.title
+              : t('notificationTitle', locale))),
       description: translation?.description || notification.description,
     };
   };
+
   const notifications = useNotificationStore((state) => state.notifications);
   const fetchNotifications = useNotificationStore((state) => state.fetchNotifications);
   const markAsRead = useNotificationStore((state) => state.markAsRead);
@@ -146,7 +177,7 @@ export function Header({ activePage, onNavigate }: HeaderProps) {
 
   useEffect(() => {
     void fetchNotifications();
-  }, [user?.id]);
+  }, [user?.id, fetchNotifications]);
 
   // Lắng nghe Realtime INSERT vào bảng notifications của Supabase để chuông tự động nhảy tức thì
   useEffect(() => {
