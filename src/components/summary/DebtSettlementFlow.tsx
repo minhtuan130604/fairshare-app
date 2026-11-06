@@ -1,6 +1,7 @@
 
 
 
+
 import {
   ArrowRight,
   Bell,
@@ -78,6 +79,42 @@ export function DebtSettlementFlow({ onNavigate }: DebtSettlementFlowProps = {})
     | ((transferKey: string, role: 'payer' | 'receiver') => Promise<void>)
     | undefined;
 
+  const [profileLookup, setProfileLookup] = useState<Record<string, any>>({});
+
+  // Shared bills chỉ lưu member snapshot. Nạp thêm profile theo userId/chủ bill để
+  // người xem khác vẫn thấy avatar và phương thức nhận tiền khi snapshot cũ thiếu dữ liệu.
+  useEffect(() => {
+    let cancelled = false;
+    const billOwnerId = (currentBill as any)?.user_id;
+    const memberIds = [
+      ...(Array.isArray(currentBill?.members) ? currentBill.members : []),
+      ...(Array.isArray(currentBill?.timelineMembers) ? currentBill.timelineMembers : []),
+    ]
+      .map((member: any) => member.userId || member.user_id || member.id)
+      .filter((id): id is string => isValidUUID(id));
+    const ids = Array.from(new Set([billOwnerId, ...memberIds].filter((id): id is string => isValidUUID(id))));
+
+    if (!supabase || ids.length === 0) {
+      setProfileLookup({});
+      return () => { cancelled = true; };
+    }
+
+    void supabase
+      .from('profiles')
+      .select('id, display_name, avatar_url, bank_name, account_number, account_holder, phone_number, russia_bank, russia_account_holder, russia_qr_url, custom_qr_url')
+      .in('id', ids)
+      .then(({ data, error }) => {
+        if (cancelled || error) return;
+        const next = (data || []).reduce((lookup: Record<string, any>, row: any) => {
+          lookup[row.id] = row;
+          return lookup;
+        }, {});
+        setProfileLookup(next);
+      });
+
+    return () => { cancelled = true; };
+  }, [currentBill?.id, currentBill?.user_id, currentBill?.members, currentBill?.timelineMembers]);
+
   const [activeQr, setActiveQr] = useState<ActiveQrData | null>(null);
   const [missingInfoModal, setMissingInfoModal] = useState<MissingInfoData | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -89,10 +126,24 @@ export function DebtSettlementFlow({ onNavigate }: DebtSettlementFlowProps = {})
   const [isSettlementSectionCollapsed, setIsSettlementSectionCollapsed] = useState(false);
 
 
-  const displayMembers: Member[] = [
-    ...(Array.isArray(currentBill?.members) ? currentBill.members : []),
-    ...(Array.isArray(currentBill?.timelineMembers) ? currentBill.timelineMembers : []),
-  ].filter((member, index, list) => list.findIndex((candidate) => candidate.id === member.id) === index);
+  const displayMembers: Member[] = useMemo(() => {
+    const members = [
+      ...(Array.isArray(currentBill?.members) ? currentBill.members : []),
+      ...(Array.isArray(currentBill?.timelineMembers) ? currentBill.timelineMembers : []),
+    ].filter((member, index, list) => list.findIndex((candidate) => candidate.id === member.id) === index);
+
+    return members.map((member: any) => {
+      const memberUserId = member.userId || member.user_id || member.id;
+      const byId = profileLookup[memberUserId];
+      const ownerId = (currentBill as any)?.user_id;
+      const ownerProfile = profileLookup[ownerId];
+      const byName = Object.values(profileLookup).find(
+        (candidate: any) => normalizeString(candidate.display_name || '') === normalizeString(member.name || '')
+      );
+      const profileData = byId || (memberUserId === ownerId ? ownerProfile : byName);
+      return profileData ? { ...member, ...profileData, id: member.id } : member;
+    });
+  }, [currentBill?.id, currentBill?.members, currentBill?.timelineMembers, currentBill?.user_id, profileLookup]);
 
   // Đọc lựa chọn đã lưu khi hóa đơn hiện tại được tải hoặc thay đổi.
   useEffect(() => {

@@ -706,6 +706,21 @@ export const useBillStore = create<BillState>()(
             return m;
           });
 
+          // Timeline có thể giữ một bản sao member riêng. Đồng bộ cùng dữ liệu
+          // thanh toán/avatar để payload lưu cloud không phụ thuộc vào chế độ bill.
+          const newTimelineMembers = Array.isArray(bill.timelineMembers)
+            ? bill.timelineMembers.map((m, idx) => {
+                if (isMeMember(m, idx, (bill as any).user_id)) {
+                  if (!matchedOnce) {
+                    matchedOnce = true;
+                    oldMyMemberId = m.id;
+                  }
+                  return updateMemberData(m);
+                }
+                return m;
+              })
+            : bill.timelineMembers;
+
           if (!matchedOnce) return bill;
 
           const replaceId = (id: string) => (oldMyMemberId && id === oldMyMemberId ? myId : id);
@@ -740,6 +755,9 @@ export const useBillStore = create<BillState>()(
           return {
             ...bill,
             members: newMembers,
+            timelineMembers: Array.isArray(newTimelineMembers)
+              ? newTimelineMembers
+              : bill.timelineMembers,
             paidByMemberId: replaceId(bill.paidByMemberId),
             items: newItems,
             expenses: newExpenses,
