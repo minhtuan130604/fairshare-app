@@ -76,25 +76,35 @@ export function Header({ activePage, onNavigate }: HeaderProps) {
       en: 'Transfer Reported',
       zh: '转账通知',
     } as const;
+    const billSharedTitles = {
+      vi: 'Chia sẻ hóa đơn',
+      ru: 'Доступ к счёту',
+      en: 'Bill Shared',
+      zh: '账单分享',
+    } as const;
     const knownTypeTitles: Record<string, string> = {
-      bill_shared: t('billSharedTitle', locale),
+      bill_shared: billSharedTitles[locale],
       system_announcement: t('notificationTitle', locale),
       support_reply: t('notificationTitle', locale),
       friend_request: t('notificationTitle', locale),
     };
     const notifType = notification.type || '';
+    const isBillShared =
+      notifType === 'bill_shared' || notification.title === 'billSharedTitle';
     const isTransferReported =
       notifType === 'transfer_reported' || notification.title === 'transfer_reported';
 
     return {
       title:
-        translation?.title ||
-        (isTransferReported
-          ? transferReportedTitles[locale]
-          : knownTypeTitles[notifType] ||
-            (notification.title && notification.title !== notifType
-              ? notification.title
-              : t('notificationTitle', locale))),
+        isBillShared
+          ? billSharedTitles[locale]
+          : translation?.title ||
+            (isTransferReported
+              ? transferReportedTitles[locale]
+              : knownTypeTitles[notifType] ||
+                (notification.title && notification.title !== notifType
+                  ? notification.title
+                  : t('notificationTitle', locale))),
       description: translation?.description || notification.description,
     };
   };
@@ -513,7 +523,7 @@ export function Header({ activePage, onNavigate }: HeaderProps) {
                             </span>
                             <span className="min-w-0 flex-1">
                               <h4 className="block text-xs font-semibold">
-                                {localizedText.title || (notification.type === 'bill_shared' ? t('billSharedTitle', locale) : 'Thông báo')}
+                                {localizedText.title || 'Thông báo'}
                               </h4>
                               <span className="mt-1 block text-xs leading-5 text-white/55">
                                 {localizedText.description}
