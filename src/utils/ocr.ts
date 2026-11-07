@@ -1,6 +1,8 @@
 import { RECEIPT_LANGUAGES, type ReceiptLang, type ReceiptLangId } from './ocrLanguages';
 import type { OcrWord, ScannedItem } from './receiptParser';
 import type { BillCategory } from '../types/bill';
+import supabase from '../lib/supabase';
+
 
 interface GroqReceiptPayload {
   language?: unknown;
@@ -24,8 +26,6 @@ export interface RecognizeResult {
   provider?: OcrProvider;
 }
 
-const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const GROQ_MODEL = 'qwen/qwen3.8-27b';
 const GROQ_TIMEOUT_MS = 40_000;
 const MAX_AI_IMAGE_WIDTH = 1600;
 const JPEG_QUALITY = 0.85;
@@ -64,23 +64,6 @@ async function sourceToBase64(
   const base64 = dataUrl.split(',')[1];
   if (!base64) throw new Error('IMAGE_ENCODING_FAILED');
   return base64;
-}
-
-/**
- * Đọc Groq key từ .env.
- */
-function getGroqApiKey(): string | undefined {
-  const env = import.meta.env as Record<string, string | undefined>;
-  const groqKey = env.VITE_GROQ_API_KEY?.trim();
-
-  if (groqKey?.startsWith('gsk_')) return groqKey;
-
-  const legacyKey = env.VITE_GEMINI_API_KEY?.trim();
-  if (legacyKey?.startsWith('gsk_')) {
-    return legacyKey;
-  }
-
-  return undefined;
 }
 
 function getGroqRetryDelayMs(response: Response, bodyText: string): number {
@@ -159,63 +142,23 @@ Quy tắc bắt buộc:
   let response: Response | null = null;
   let lastError = '';
 
-  const env = import.meta.env as Record<string, string | undefined>;
-  const supabaseUrl = env.VITE_SUPABASE_URL;
-  const supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY;
-  const edgeFunctionUrl = supabaseUrl ? `${supabaseUrl}/functions/v1/ocr-receipt` : null;
-  const localDirectKey = getGroqApiKey();
-
-  const useEdgeFunction = Boolean(edgeFunctionUrl && supabaseAnonKey);
+  if (!supabase) {
+    throw new Error('SUPABASE_NOT_CONFIGURED');
+  }
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), GROQ_TIMEOUT_MS);
 
     try {
-      if (useEdgeFunction && edgeFunctionUrl && supabaseAnonKey) {
-        console.info(`[OCR] Đang gửi qua Supabase Edge Function${attempt > 0 ? ' (thử lại)' : ''}`);
-        response = await fetch(edgeFunctionUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${supabaseAnonKey}`,
-            apikey: supabaseAnonKey,
-          },
-          signal: controller.signal,
-          body: JSON.stringify({ base64Image: base64, prompt }),
-        });
-      } else if (localDirectKey) {
-        console.info(`[OCR] Đang gọi trực tiếp Groq API cục bộ${attempt > 0 ? ' (thử lại)' : ''}`);
-        response = await fetch(GROQ_API_URL, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${localDirectKey}`,
-            'Content-Type': 'application/json',
-          },
-          signal: controller.signal,
-          body: JSON.stringify({
-            model: GROQ_MODEL,
-            temperature: 0.1,
-            reasoning_effort: 'none',
-            response_format: { type: 'json_object' },
-            messages: [
-              {
-                role: 'user',
-                content: [
-                  { type: 'text', text: prompt },
-                  {
-                    type: 'image_url',
-                    image_url: { url: `data:image/jpeg;base64,${base64}` },
-                  },
-                ],
-              },
-            ],
-          }),
-        });
-      } else {
-        console.error('[OCR] Missing API key or configuration');
-        throw new Error('MISSING_GROQ_API_KEY');
-      }
+      console.info(`[OCR] Đang gửi qua Supabase Edge Function${attempt > 0 ? ' (thử lại)' : ''}`);
+      const { data, error } = await supabase.functions.invoke('ocr-receipt', {
+        body: { base64Image: base64, prompt },
+        signal: controller.signal,
+      });
+
+      if (error) throw error;
+      response = new Response(JSON.stringify(data), { status: 200 });
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
         throw new Error('GROQ_TIMEOUT');

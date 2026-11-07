@@ -1,4 +1,10 @@
 // @ts-nocheck
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+
+
+const MAX_BASE64_IMAGE_LENGTH = 7 * 1024 * 1024;
+// @ts-nocheck
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL = 'qwen/qwen3.8-27b';
 
@@ -14,6 +20,40 @@ Deno.serve(async (req: Request) => {
     return new Response('ok', { headers: corsHeaders });
   }
 
+  const authHeader = req.headers.get('Authorization');
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+  if (!token) {
+    return new Response(JSON.stringify({ error: 'UNAUTHORIZED' }), {
+      status: 401,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return new Response(JSON.stringify({ error: 'UNAUTHORIZED' }), {
+      status: 401,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  try {
+    const supabase = createClient(supabaseUrl, supabaseAnonKey);
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: 'UNAUTHORIZED' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+  } catch {
+    return new Response(JSON.stringify({ error: 'UNAUTHORIZED' }), {
+      status: 401,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
   try {
     const apiKey = Deno.env.get('GROQ_API_KEY');
     if (!apiKey) {
@@ -24,14 +64,15 @@ Deno.serve(async (req: Request) => {
     }
 
     const { base64Image, prompt } = await req.json();
-    if (!base64Image) {
+    if (typeof base64Image !== 'string' || base64Image.length === 0 || base64Image.length > MAX_BASE64_IMAGE_LENGTH) {
       return new Response(
-        JSON.stringify({ error: 'MISSING_IMAGE' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'PAYLOAD_TOO_LARGE' }),
+        { status: 413, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     const groqResponse = await fetch(GROQ_API_URL, {
+      signal: AbortSignal.timeout(35_000),
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
