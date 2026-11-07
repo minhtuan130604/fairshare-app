@@ -160,10 +160,16 @@ function createBillSummary(bill: BillSession) {
   const total = mode === 'TIMELINE'
     ? (clean.expenses || []).reduce((sum, expense) => {
       const subtotal = (expense.items || []).reduce((itemsTotal, item) => itemsTotal + (Number(item.price) || 0) * (Number(item.quantity) || 0), 0);
-      return sum + subtotal + subtotal * ((Number(expense.taxPercent) || 0) / 100) + subtotal * ((Number(expense.tipPercent) || 0) / 100);
+      const tip = subtotal * ((Number(expense.tipPercent) || 0) / 100);
+      const tax = (subtotal + tip) * ((Number(expense.taxPercent) || 0) / 100);
+      return sum + subtotal + tip + tax;
     }, 0)
-    : (clean.items || []).reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0), 0)
-      * (1 + (Number(clean.taxPercent) || 0) / 100 + (Number(clean.tipPercent) || 0) / 100);
+    : (() => {
+      const subtotal = (clean.items || []).reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0), 0);
+      const tip = subtotal * ((Number(clean.tipPercent) || 0) / 100);
+      const tax = (subtotal + tip) * ((Number(clean.taxPercent) || 0) / 100);
+      return subtotal + tip + tax;
+    })();
   const members = mode === 'TIMELINE' ? clean.timelineMembers || clean.members || [] : clean.members || [];
   return {
     title: clean.title || 'Hóa đơn',
@@ -1583,9 +1589,9 @@ export const useBillStore = create<BillState>()(
             const total = billsToSummarize.reduce((sum, billPart) => {
               const subtotal = (billPart.items || []).reduce((itemSum, item) =>
                 itemSum + (Number(item.price) || 0) * (Number(item.quantity) || 0), 0);
-              return sum + subtotal
-                + subtotal * ((Number(billPart.taxPercent) || 0) / 100)
-                + subtotal * ((Number(billPart.tipPercent) || 0) / 100);
+              const serviceFee = subtotal * ((Number(billPart.tipPercent) || 0) / 100);
+              const vat = (subtotal + serviceFee) * ((Number(billPart.taxPercent) || 0) / 100);
+              return sum + subtotal + serviceFee + vat;
             }, 0);
             const summary = {
               title: cleanBill.title || 'Hóa đơn',

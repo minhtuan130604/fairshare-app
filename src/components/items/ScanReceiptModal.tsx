@@ -74,7 +74,7 @@ function inferCurrencyFromScan(
 }
 
 export function ScanReceiptModal({ isOpen, onClose, expenseId }: ScanReceiptModalProps) {
-  const { currentBill, addItem, addItemToExpense, updateCurrency, updateBillTitle, updateBillCategory } = useBillStore() as any;
+  const { currentBill, addItem, addItemToExpense, updateCurrency, updateBillTitle, updateBillCategory, updateTax, updateTip, updateExpense } = useBillStore() as any;
   const { locale } = useLocale();
 
   const [stage, setStage] = useState<Stage>('pick');
@@ -82,6 +82,8 @@ export function ScanReceiptModal({ isOpen, onClose, expenseId }: ScanReceiptModa
   const [preview, setPreview] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<DraftItem[]>([]);
   const [detectedTotal, setDetectedTotal] = useState<number | null>(null);
+  const [detectedVatRate, setDetectedVatRate] = useState<number | null>(null);
+  const [detectedServiceRate, setDetectedServiceRate] = useState<number | null>(null);
   const [detectedCurrency, setDetectedCurrency] = useState<CurrencyCode>('VND' as CurrencyCode);
   const [detectedCategory, setDetectedCategory] = useState<BillCategory>('dining');
   const [customCategoryName, setCustomCategoryName] = useState<string>('');
@@ -117,6 +119,8 @@ export function ScanReceiptModal({ isOpen, onClose, expenseId }: ScanReceiptModa
     setStage('pick');
     setDrafts([]);
     setDetectedTotal(null);
+    setDetectedVatRate(null);
+    setDetectedServiceRate(null);
     setDetectedTitle('');
     setDetectedCategory('dining');
     setCustomCategoryName('');
@@ -220,6 +224,8 @@ export function ScanReceiptModal({ isOpen, onClose, expenseId }: ScanReceiptModa
         })),
       );
       setDetectedTotal(parsed.detectedTotal);
+      setDetectedVatRate(result.vatRate ?? null);
+      setDetectedServiceRate(result.serviceRate ?? null);
       setStage('review');
     } catch (error) {
       console.error('[ScanReceipt] Error caught:', error);
@@ -260,7 +266,19 @@ export function ScanReceiptModal({ isOpen, onClose, expenseId }: ScanReceiptModa
       updateBillTitle(detectedTitle);
     }
 
-    // 4. Thêm các món vào hóa đơn
+    // 4. Áp dụng VAT/phí dịch vụ được nhận diện, chỉ khi OCR trả về giá trị dương.
+    const rateUpdates: Record<string, number> = {};
+    if (detectedVatRate !== null && detectedVatRate > 0) rateUpdates.taxPercent = detectedVatRate;
+    if (detectedServiceRate !== null && detectedServiceRate > 0) rateUpdates.tipPercent = detectedServiceRate;
+    if (Object.keys(rateUpdates).length > 0) {
+      if (expenseId) updateExpense(expenseId, rateUpdates);
+      else {
+        if (rateUpdates.taxPercent !== undefined) updateTax(rateUpdates.taxPercent);
+        if (rateUpdates.tipPercent !== undefined) updateTip(rateUpdates.tipPercent);
+      }
+    }
+
+    // 5. Thêm các món vào hóa đơn
     selected.forEach((draft) => {
       const item = {
         name: draft.name.trim(),

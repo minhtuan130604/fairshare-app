@@ -14,8 +14,8 @@ export function calculateSingleExpenseBreakdown(
   const items = Array.isArray(expense.items) ? expense.items : [];
   const participants = Array.isArray(expense.participantIds) ? expense.participantIds : [];
   const subtotal = items.reduce((sum, item) => sum + (Number(item?.price) || 0) * (Number(item?.quantity) || 0), 0);
-  const totalTax = subtotal * ((Number(expense.taxPercent) || 0) / 100);
   const totalTip = subtotal * ((Number(expense.tipPercent) || 0) / 100);
+  const totalTax = (subtotal + totalTip) * ((Number(expense.taxPercent) || 0) / 100);
 
   return members.map((member) => {
     let memberSubtotal = 0;
@@ -94,8 +94,9 @@ export function calculateBillTotals(bill: BillSession): {
         0,
       );
       result.subtotal += subtotal;
-      result.tax += subtotal * ((Number(expense.taxPercent) || 0) / 100);
-      result.tip += subtotal * ((Number(expense.tipPercent) || 0) / 100);
+      const tip = subtotal * ((Number(expense.tipPercent) || 0) / 100);
+      result.tip += tip;
+      result.tax += (subtotal + tip) * ((Number(expense.taxPercent) || 0) / 100);
       result.itemCount += Array.isArray(expense.items) ? expense.items.length : 0;
       return result;
     }, { subtotal: 0, tax: 0, tip: 0, itemCount: 0 });
@@ -107,8 +108,8 @@ export function calculateBillTotals(bill: BillSession): {
     (sum, item) => sum + (Number(item?.price) || 0) * (Number(item?.quantity) || 0),
     0,
   );
-  const tax = subtotal * ((Number(bill.taxPercent) || 0) / 100);
   const tip = subtotal * ((Number(bill.tipPercent) || 0) / 100);
+  const tax = (subtotal + tip) * ((Number(bill.taxPercent) || 0) / 100);
   return { subtotal, tax, tip, total: subtotal + tax + tip, itemCount: items.length };
 }
 
@@ -167,8 +168,8 @@ export function calculateMemberBreakdowns(bill: BillSession | null | undefined):
 
     // Calculate proportional tax and tip
     const proportion = memberSubtotal / billSubtotal;
-    const totalTax = billSubtotal * (taxPercent / 100);
     const totalTip = billSubtotal * (tipPercent / 100);
+    const totalTax = (billSubtotal + totalTip) * (taxPercent / 100);
 
     const memberTax = totalTax * proportion;
     const memberTip = totalTip * proportion;

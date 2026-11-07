@@ -195,9 +195,9 @@ function ExpenseCard({ expense, index }: { expense: BillExpense; index: number }
   ].filter((member, index, list) => list.findIndex((candidate) => candidate.id === member.id) === index);
   const items = Array.isArray(expense.items) ? expense.items : [];
   const subtotal = items.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0), 0);
-  const tax = subtotal * ((Number(expense.taxPercent) || 0) / 100);
   const tip = subtotal * ((Number(expense.tipPercent) || 0) / 100);
-  const totalExpense = subtotal + tax + tip;
+  const tax = (subtotal + tip) * ((Number(expense.taxPercent) || 0) / 100);
+  const totalExpense = subtotal + tip + tax;
   const isReadOnly = isBillReadOnly(currentBill, user?.id);
 
   const submitItem = (event: FormEvent) => {

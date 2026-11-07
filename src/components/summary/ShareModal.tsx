@@ -286,7 +286,12 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
                     </div>
                     <span className="shrink-0 font-medium text-accent">
                       {formatCurrency(
-                        expense.items.reduce((sum, item) => sum + item.price * item.quantity, 0) * (1 + ((expense.taxPercent || 0) + (expense.tipPercent || 0)) / 100),
+                        (() => {
+                          const subtotal = expense.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+                          const serviceFee = subtotal * ((expense.tipPercent || 0) / 100);
+                          const vat = (subtotal + serviceFee) * ((expense.taxPercent || 0) / 100);
+                          return subtotal + serviceFee + vat;
+                        })(),
                         currentBill.currency
                       )}
                     </span>
@@ -307,7 +312,11 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
                       {(expense.taxPercent || 0) > 0 && (
                         <div className="flex justify-between">
                           <span>{t('taxLabel', locale).replace(' (%)', '')} {expense.taxPercent}%</span>
-                          <span>{formatCurrency(expense.items.reduce((sum, item) => sum + item.price * item.quantity, 0) * (expense.taxPercent / 100), currentBill.currency)}</span>
+                          <span>{formatCurrency((() => {
+                            const subtotal = expense.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+                            const serviceFee = subtotal * ((expense.tipPercent || 0) / 100);
+                            return (subtotal + serviceFee) * ((expense.taxPercent || 0) / 100);
+                        })(), currentBill.currency)}</span>
                         </div>
                       )}
                       {(expense.tipPercent || 0) > 0 && (

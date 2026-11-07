@@ -8,6 +8,8 @@ interface GroqReceiptPayload {
   language?: unknown;
   title?: unknown;
   category?: unknown;
+  vatRate?: unknown;
+  serviceRate?: unknown;
   items?: unknown;
   detectedTotal?: unknown;
 }
@@ -20,6 +22,8 @@ export interface RecognizeResult {
   confidence: number;
   items?: ScannedItem[];
   detectedTotal?: number | null;
+  vatRate?: number | null;
+  serviceRate?: number | null;
   title?: string;
   category?: BillCategory;
   language?: ReceiptLangId;
@@ -199,11 +203,16 @@ async function callGroqVision(
     });
     syntheticLines.push(`${cleanName}   ${rawQty} x ${unitPrice}`);
   }
-
   const totalCandidate = data.detectedTotal == null ? NaN : parseFloat(String(data.detectedTotal));
   const detectedTotal = Number.isFinite(totalCandidate) && totalCandidate > 0
     ? totalCandidate
     : null;
+  const parseRate = (value: unknown): number | null => {
+    const rate = Number(value);
+    return Number.isFinite(rate) && rate >= 0 ? rate : null;
+  };
+  const vatRate = parseRate(data.vatRate);
+  const serviceRate = parseRate(data.serviceRate);
 
   if (detectedTotal !== null) {
     const totalKeyword = matchedLang.totalWords[0] ?? 'TOTAL';
@@ -224,6 +233,8 @@ async function callGroqVision(
       confidence: 0,
       items: scannedItems,
       detectedTotal,
+      vatRate,
+      serviceRate,
       title: detectedTitle,
       category: detectedCategory,
       language: detectedLangId,

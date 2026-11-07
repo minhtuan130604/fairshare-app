@@ -12,12 +12,14 @@ const RECEIPT_OCR_PROMPT = `
 Bạn là hệ thống đọc hóa đơn đa năng. Đọc ảnh hóa đơn và trả về DUY NHẤT một JSON hợp lệ theo cấu trúc:
 {
   "language": "vi",
-  "title": "Tên cửa hàng/nhà hàng/dịch vụ",
+  "title": "Tên cửa hàng",
   "category": "dining",
+  "vatRate": 10,
+  "serviceRate": 5,
   "items": [
     { "name": "Ốc Hương", "quantity": 3, "price": 720000 }
   ],
-  "detectedTotal": 2160000
+  "detectedTotal": 3983000
 }
 
 Quy tắc bắt buộc:
@@ -34,6 +36,8 @@ Quy tắc bắt buộc:
 4. name là tên hàng hóa/món ăn. Giữ nguyên thông tin định lượng/đơn vị nếu hóa đơn có khối lượng hoặc thể tích (kg, g, l, ml), đặt trong tên món, ví dụ "Thịt ba chỉ (0.85 kg)" hoặc "Nước giặt 1.5L". Chỉ bỏ số thứ tự; không xóa định lượng có ý nghĩa.
 5. quantity là số lượng dòng hàng. Giữ số thập phân nếu có (ví dụ 1.5 hoặc 0.8). Nếu không có, đặt là 1.
 6. price là đơn giá của một đơn vị/số lượng ghi trên dòng, KHÔNG lấy tổng tiền dòng nếu có đơn giá riêng.
+ 7. vatRate là phần trăm thuế VAT ghi trên hóa đơn, dạng số thực hoặc số nguyên (ví dụ 10 hoặc 8). Nếu không có, trả về 0 hoặc null.
+ 8. serviceRate là phần trăm phí phục vụ/service charge ghi trên hóa đơn, dạng số thực hoặc số nguyên (ví dụ 5). Nếu không có, trả về 0 hoặc null.
 7. detectedTotal là tổng số tiền thanh toán cuối cùng thực tế của hóa đơn, sau khi cộng thuế/phí và trừ chiết khấu. Nếu không đọc được, trả về null.
 8. Kiểm tra kỹ mọi dòng VAT/НДС/tax, phí phục vụ/service charge, phụ phí và discount/скидка. Không đưa các dòng này vào items. Đối chiếu subtotal + thuế + phí - chiết khấu với detectedTotal; nếu không có trường riêng để trả về, hãy phản ánh đúng các khoản này trong detectedTotal và không làm lệch tổng so với các món lẻ.
 9. Bỏ qua tiền khách đưa, tiền thừa, phương thức thanh toán, mã giao dịch và các dòng không phải hàng hóa/dịch vụ.
