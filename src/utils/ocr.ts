@@ -31,8 +31,9 @@ export interface RecognizeResult {
 }
 
 const GROQ_TIMEOUT_MS = 40_000;
-const MAX_AI_IMAGE_WIDTH = 1600;
-const JPEG_QUALITY = 0.85;
+const MAX_AI_IMAGE_WIDTH = 1280;
+const MAX_AI_IMAGE_HEIGHT = 1280;
+const JPEG_QUALITY = 0.78;
 
 // ---------------------------------------------------------------------------
 // 1. Chuẩn hóa ảnh để gửi lên Groq Vision
@@ -41,15 +42,31 @@ const JPEG_QUALITY = 0.85;
 async function sourceToBase64(
   source: File | HTMLCanvasElement,
   maxWidth = MAX_AI_IMAGE_WIDTH,
+  maxHeight = MAX_AI_IMAGE_HEIGHT,
 ): Promise<string> {
   let canvas: HTMLCanvasElement;
 
   if (typeof HTMLCanvasElement !== 'undefined' && source instanceof HTMLCanvasElement) {
-    canvas = source;
+    const scale = Math.min(1, maxWidth / source.width, maxHeight / source.height);
+    canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(source.width * scale));
+    canvas.height = Math.max(1, Math.round(source.height * scale));
+
+    const context = canvas.getContext('2d');
+    if (!context) {
+      throw new Error('CANVAS_NOT_SUPPORTED');
+    }
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = 'high';
+    context.drawImage(source, 0, 0, canvas.width, canvas.height);
   } else {
-    const bitmap = await createImageBitmap(source as File);
+    // `from-image` makes createImageBitmap apply the camera photo's EXIF
+    // orientation before it is drawn, preventing sideways/upside-down OCR.
+    const bitmap = await createImageBitmap(source as File, {
+      imageOrientation: 'from-image',
+    });
     try {
-      const scale = Math.min(1, maxWidth / bitmap.width);
+      const scale = Math.min(1, maxWidth / bitmap.width, maxHeight / bitmap.height);
       canvas = document.createElement('canvas');
       canvas.width = Math.max(1, Math.round(bitmap.width * scale));
       canvas.height = Math.max(1, Math.round(bitmap.height * scale));
@@ -58,17 +75,25 @@ async function sourceToBase64(
       if (!context) {
         throw new Error('CANVAS_NOT_SUPPORTED');
       }
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = 'high';
       context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
     } finally {
       bitmap.close();
     }
   }
 
+  // Keep the existing API contract: the Edge Function receives the payload
+  // portion of this valid JPEG Data URL, not the `data:image/jpeg,` prefix.
   const dataUrl = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
-  const base64 = dataUrl.split(',')[1];
+  if (!dataUrl.startsWith('data:image/jpeg;base64,')) {
+    throw new Error('IMAGE_ENCODING_FAILED');
+  }
+  const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
   if (!base64) throw new Error('IMAGE_ENCODING_FAILED');
   return base64;
 }
+
 
 function getGroqRetryDelayMs(response: Response, bodyText: string): number {
   const retryAfter = response.headers.get('retry-after');
