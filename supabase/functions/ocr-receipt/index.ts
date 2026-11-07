@@ -164,18 +164,54 @@ Deno.serve(async (req: Request) => {
     });
 
     const data = await groqResponse.json();
-    if (groqResponse.ok && data?.choices?.[0]?.message?.content) {
-      const { error: usageError } = await supabaseAdmin
-        .from('ocr_usage')
-        .insert({ user_id: user.id });
-
-      if (usageError) {
-        console.error('Failed to record OCR usage:', usageError);
-      }
+    if (!groqResponse.ok) {
+      return new Response(JSON.stringify(data), {
+        status: groqResponse.status,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    return new Response(JSON.stringify(data), {
-      status: groqResponse.status,
+    const rawText = data?.choices?.[0]?.message?.content;
+    if (typeof rawText !== 'string' || !rawText.trim()) {
+      return new Response(JSON.stringify({ error: 'AI_RESPONSE_PARSE_FAILED' }), {
+        status: 422,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    let cleanJson = rawText.trim();
+    if (cleanJson.startsWith('```json')) cleanJson = cleanJson.slice(7);
+    if (cleanJson.startsWith('```')) cleanJson = cleanJson.slice(3);
+    if (cleanJson.endsWith('```')) cleanJson = cleanJson.slice(0, -3);
+    cleanJson = cleanJson.trim();
+
+    let receiptData: unknown;
+    try {
+      receiptData = JSON.parse(cleanJson);
+    } catch {
+      return new Response(JSON.stringify({ error: 'AI_RESPONSE_PARSE_FAILED' }), {
+        status: 422,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (!receiptData || typeof receiptData !== 'object' || Array.isArray(receiptData)) {
+      return new Response(JSON.stringify({ error: 'AI_RESPONSE_PARSE_FAILED' }), {
+        status: 422,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const { error: usageError } = await supabaseAdmin
+      .from('ocr_usage')
+      .insert({ user_id: user.id });
+
+    if (usageError) {
+      console.error('Failed to record OCR usage:', usageError);
+    }
+
+    return new Response(JSON.stringify(receiptData), {
+      status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (err: unknown) {

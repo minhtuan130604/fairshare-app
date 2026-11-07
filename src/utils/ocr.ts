@@ -157,44 +157,11 @@ async function callGroqVision(
 
   onProgress('Đang phân tích dữ liệu hóa đơn...', 0.75);
   const responseJson: unknown = await response.json();
-  if (!responseJson || typeof responseJson !== 'object') {
+  if (!responseJson || typeof responseJson !== 'object' || Array.isArray(responseJson)) {
     throw new Error('GROQ_INVALID_RESPONSE');
   }
 
-  const choices = (responseJson as { choices?: unknown }).choices;
-  if (!Array.isArray(choices) || !choices[0] || typeof choices[0] !== 'object') {
-    throw new Error('GROQ_EMPTY_CHOICES');
-  }
-
-  const message = (choices[0] as { message?: unknown }).message;
-  const rawText =
-    message && typeof message === 'object'
-      ? (message as { content?: unknown }).content
-      : undefined;
-
-  if (typeof rawText !== 'string' || !rawText.trim()) {
-    throw new Error('GROQ_EMPTY_CONTENT');
-  }
-
-  let cleanJson = rawText
-    .trim()
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```$/, '')
-    .trim();
-
-  const firstBrace = cleanJson.indexOf('{');
-  const lastBrace = cleanJson.lastIndexOf('}');
-  if (firstBrace >= 0 && lastBrace > firstBrace) {
-    cleanJson = cleanJson.slice(firstBrace, lastBrace + 1);
-  }
-
-  let data: GroqReceiptPayload;
-  try {
-    data = JSON.parse(cleanJson) as GroqReceiptPayload;
-  } catch {
-    console.error('[OCR] Groq trả về JSON không hợp lệ.');
-    throw new Error('GROQ_INVALID_JSON');
-  }
+  const data = responseJson as GroqReceiptPayload;
 
   let detectedLangId: Exclude<ReceiptLangId, 'auto'> = 'vi';
   if (
