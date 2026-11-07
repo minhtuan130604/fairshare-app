@@ -49,6 +49,7 @@ Quy tắc bắt buộc:
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
 async function requestGroq(model: string, apiKey: string, base64Image: string): Promise<Response> {
@@ -88,13 +89,17 @@ async function shouldFallback(response: Response): Promise<boolean> {
 }
 
 async function requestWithFallback(apiKey: string, base64Image: string): Promise<Response> {
-  const primaryResponse = await requestGroq(GROQ_MODEL, apiKey, base64Image);
-  if (!(await shouldFallback(primaryResponse))) {
+  try {
+    const primaryResponse = await requestGroq(GROQ_MODEL, apiKey, base64Image);
+    if (await shouldFallback(primaryResponse)) {
+      console.warn(`Primary model ${GROQ_MODEL} overloaded/failed. Falling back to ${GROQ_FALLBACK_MODEL}...`);
+      return requestGroq(GROQ_FALLBACK_MODEL, apiKey, base64Image);
+    }
     return primaryResponse;
+  } catch (err) {
+    console.warn(`Primary model ${GROQ_MODEL} network error/timeout. Falling back to ${GROQ_FALLBACK_MODEL}...`, err);
+    return requestGroq(GROQ_FALLBACK_MODEL, apiKey, base64Image);
   }
-
-  console.warn(`Primary model ${GROQ_MODEL} failed/overloaded. Falling back to ${GROQ_FALLBACK_MODEL}...`);
-  return requestGroq(GROQ_FALLBACK_MODEL, apiKey, base64Image);
 }
 
 // Dùng Deno.serve chuẩn của Supabase Edge Functions
@@ -154,10 +159,12 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    if (recentRequests && recentRequests.length > 0) {
-      const lastRequestTime = new Date(recentRequests[0].created_at).getTime();
-      const now = Date.now();
-      if (now - lastRequestTime < 5000) {
+    const createdAt = recentRequests?.[0]?.created_at;
+    const lastRequestTime = createdAt ? Date.parse(createdAt) : NaN;
+
+    if (Number.isFinite(lastRequestTime)) {
+      const ageMs = Date.now() - lastRequestTime;
+      if (ageMs >= 0 && ageMs < 5000) {
         return new Response(JSON.stringify({
           error: 'CONCURRENT_REQUEST_BLOCKED',
           message: 'A scan request is already being processed. Please wait a few seconds.',
@@ -200,14 +207,15 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const rawApiKey = Deno.env.get('GROQ_API_KEY');
-    const apiKey = rawApiKey?.replace(/[^\x00-\x7F]/g, '').trim();
-    if (!apiKey) {
+    const rawApiKey = Deno.env.get('GROQ_API_KEY')?.trim();
+
+    if (!rawApiKey || /[\r\n]/.test(rawApiKey) || /[^\x20-\x7E]/.test(rawApiKey)) {
       return new Response(
         JSON.stringify({ error: 'MISSING_SERVER_GROQ_API_KEY' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+    const apiKey = rawApiKey;
 
     const { base64Image } = await req.json();
     if (typeof base64Image !== 'string' || base64Image.length === 0 || base64Image.length > MAX_BASE64_IMAGE_LENGTH) {
@@ -219,7 +227,12 @@ Deno.serve(async (req: Request) => {
 
     const groqResponse = await requestWithFallback(apiKey, base64Image);
 
-    const data = await groqResponse.json();
+    let data: any;
+    try {
+      data = await groqResponse.json();
+    } catch {
+      data = { error: 'GROQ_INVALID_RESPONSE' };
+    }
     if (!groqResponse.ok) {
       return new Response(JSON.stringify(data), {
         status: groqResponse.status,
