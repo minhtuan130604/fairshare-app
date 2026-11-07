@@ -7,6 +7,7 @@ import { AnimatePresence } from 'framer-motion';
 import { useLocale, t } from '../../hooks/useLocale';
 
 export function ItemList() {
+  const { user } = useAuthStore();
   const { currentBill, removeItem } = useBillStore();
   const { locale } = useLocale();
 
@@ -19,7 +20,6 @@ export function ItemList() {
     (item) => !Array.isArray(item.assignedMemberIds) || item.assignedMemberIds.length === 0
   ).length;
 
-  const { user } = useAuthStore();
   const isReadOnly = isBillReadOnly(currentBill, user?.id);
 
   const clearAllLabel =

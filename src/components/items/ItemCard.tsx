@@ -12,6 +12,7 @@ interface ItemCardProps {
 }
 
 export function ItemCard({ itemId }: ItemCardProps) {
+  const { user } = useAuthStore();
   const { currentBill, removeItem, updateItem, toggleMemberOnItem, assignAllMembersToItem } = useBillStore();
   const { locale } = useLocale();
 
@@ -28,7 +29,6 @@ export function ItemCard({ itemId }: ItemCardProps) {
   const isUnassigned = assignedMemberIds.length === 0;
   const pricePerPerson = isUnassigned ? 0 : totalPrice / assignedMemberIds.length;
 
-  const { user } = useAuthStore();
   const isReadOnly = isBillReadOnly(currentBill, user?.id);
 
   const deselectAllMembersFromItem = () => {
