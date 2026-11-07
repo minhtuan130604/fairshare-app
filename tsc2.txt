@@ -1,3 +1,0 @@
-src/store/useBillStore.ts(590,11): error TS1117: An object literal cannot have multiple properties with the same name.
-src/store/useBillStore.ts(591,11): error TS1117: An object literal cannot have multiple properties with the same name.
-src/store/useBillStore.ts(592,11): error TS1117: An object literal cannot have multiple properties with the same name.

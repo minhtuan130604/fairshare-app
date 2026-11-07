@@ -1,3 +1,0 @@
-src/pages/HistoryPage.tsx(19,426): error TS2339: Property 'shareId' does not exist on type 'BillSession'.
-src/pages/HistoryPage.tsx(19,1022): error TS2339: Property 'sharedBy' does not exist on type 'BillSession'.
-src/pages/HistoryPage.tsx(19,1477): error TS2339: Property 'shareId' does not exist on type 'BillSession'.

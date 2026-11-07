@@ -1,9 +1,0 @@
-
-> fairshare-app@0.0.0 build
-> tsc -b && vite build
-
-src/hooks/useLocale.tsx(22,114): error TS1117: An object literal cannot have multiple properties with the same name.
-src/hooks/useLocale.tsx(154,122): error TS1117: An object literal cannot have multiple properties with the same name.
-src/hooks/useLocale.tsx(289,128): error TS1117: An object literal cannot have multiple properties with the same name.
-src/hooks/useLocale.tsx(423,80): error TS1117: An object literal cannot have multiple properties with the same name.
-BUILD_EXIT=0 

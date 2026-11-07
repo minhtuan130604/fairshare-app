@@ -28,3 +28,17 @@ dist-ssr
 supabase/.temp/ 
 supabase/.temp/ 
 supabase/.temp/ 
+
+# Temporary logs and test/build artifacts
+*.log
+*-output.txt
+*-check.txt
+*-final.txt
+*-result.txt
+build-*.txt
+tsc-*.txt
+test-*.txt
+lint*.txt
+oxlint*.txt
+*.exit
+

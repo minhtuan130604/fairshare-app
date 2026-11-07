@@ -1,2 +1,0 @@
-src/components/profile/UserDashboardModal.tsx(1223,19): error TS1003: Identifier expected.
-src/components/profile/UserDashboardModal.tsx(1228,24): error TS1382: Unexpected token. Did you mean `{'>'}` or `&gt;`?

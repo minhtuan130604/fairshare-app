@@ -1,1 +1,0 @@
-src/components/summary/LiveReceiptCard.tsx(13,9): error TS6133: 'items' is declared but its value is never read.
