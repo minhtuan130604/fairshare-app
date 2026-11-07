@@ -259,9 +259,14 @@ export function ScanReceiptModal({ isOpen, onClose, expenseId }: ScanReceiptModa
       setDetectedVatRate(result.vatRate ?? null);
       setDetectedServiceRate(result.serviceRate ?? null);
       setStage('review');
-    } catch (error) {
-      console.error('[ScanReceipt] Error caught:', error);
-      setError(t('readFailed', locale));
+    } catch (err) {
+      console.error('[ScanReceipt] Error caught:', err);
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      if (errorMessage.includes('RATE_LIMIT_EXCEEDED') || errorMessage.includes('429')) {
+        setError(t('ocrDailyLimitReached', locale));
+      } else {
+        setError(t('readFailed', locale));
+      }
       setStage('error');
     }
   };

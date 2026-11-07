@@ -222,6 +222,7 @@ const translations = {
 
     noItemsFound: 'Không tìm thấy món nào trong ảnh. Hãy chụp thẳng, đủ sáng, thấy rõ cả tên món và giá, hoặc nhập món bằng tay.',
     readFailed: 'Không đọc được ảnh. Hãy thử lại.',
+    ocrDailyLimitReached: 'Bạn đã hết lượt quét hóa đơn trong ngày hôm nay. Vui lòng quay lại vào ngày mai hoặc nhập món thủ công nhé!',
     geminiKeyMissing: 'Không tìm thấy khóa Gemini API. Hãy kiểm tra file .env có VITE_GEMINI_API_KEY và khởi động lại ứng dụng.',
     geminiOffline: 'Cần kết nối internet để quét hóa đơn bằng Gemini AI.',
     geminiTimeout: 'Gemini AI phản hồi quá lâu. Hãy thử lại hoặc dùng OCR cục bộ.',
@@ -628,6 +629,7 @@ const translations = {
 
     noItemsFound: 'No items found. Take a straight, well-lit photo that clearly shows item names and prices, or add items manually.',
     readFailed: 'Could not read the image. Please try again.',
+    ocrDailyLimitReached: "You've run out of receipt scans for today. Please come back tomorrow or add items manually!",
     geminiKeyMissing: 'Gemini API key is missing. Make sure .env contains VITE_GEMINI_API_KEY, then restart the app.',
     geminiOffline: 'An internet connection is required to scan receipts with Gemini AI.',
     geminiTimeout: 'Gemini AI took too long to respond. Try again or use local OCR.',
@@ -1047,6 +1049,7 @@ const translations = {
     loadingLanguage: 'Загрузка данных {language} (только первый раз)...',
     scanComplete: 'Готово!',
 
+    ocrDailyLimitReached: 'У вас закончились сканирования чеков на сегодня. Пожалуйста, вернитесь завтра или добавьте позиции вручную!',
     noItemsFound: 'Не удалось найти позиции. Сфотографируйте чек прямо и при хорошем освещении, чтобы названия и цены были видны, или добавьте их вручную.',
     readFailed: 'Не удалось прочитать изображение. Попробуйте ещё раз.',
     geminiKeyMissing: 'Не найден ключ Gemini API. Проверьте, что в .env есть VITE_GEMINI_API_KEY, затем перезапустите приложение.',
@@ -1468,6 +1471,7 @@ const translations = {
     loadingOcr: '正在加载文字识别...',
     loadingLanguage: '首次使用，正在加载 {language} 语言数据...',
     scanComplete: '完成！',
+    ocrDailyLimitReached: '您今天的账单扫描次数已用完。请明天再来，或手动添加项目！',
 
     noItemsFound: '未在图片中找到项目。请在光线充足处正对账单拍照，确保名称和价格清晰可见，或手动添加项目。',
     readFailed: '无法读取图片，请重试。',

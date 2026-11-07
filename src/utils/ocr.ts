@@ -129,7 +129,15 @@ async function callGroqVision(
         signal: controller.signal,
       });
 
-      if (error) throw error;
+      if (error) {
+        const status = (error as any)?.context?.status || (error as any)?.status;
+        const responseBody = await (error as any)?.context?.json?.().catch(() => null);
+
+        if (status === 429 || responseBody?.error === 'RATE_LIMIT_EXCEEDED') {
+          throw new Error('RATE_LIMIT_EXCEEDED');
+        }
+        throw error;
+      }
       dataFromInvoke = data;
       response = new Response(JSON.stringify(data), { status: 200 });
     } catch (error) {
