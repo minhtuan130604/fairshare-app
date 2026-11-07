@@ -71,12 +71,38 @@ Deno.serve(async (req: Request) => {
     });
   }
 
+  const supabase = createClient(supabaseUrl, supabaseAnonKey);
+  let user;
   try {
-    const supabase = createClient(supabaseUrl, supabaseAnonKey);
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    const { data: userData, error: authError } = await supabase.auth.getUser(token);
+    user = userData.user;
     if (authError || !user) {
       return new Response(JSON.stringify({ error: 'UNAUTHORIZED' }), {
         status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { count, error: countError } = await supabase
+      .from('ocr_usage')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .gte('created_at', oneDayAgo);
+
+    if (countError) {
+      return new Response(JSON.stringify({ error: 'OCR_USAGE_CHECK_FAILED' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if ((count ?? 0) >= 20) {
+      return new Response(JSON.stringify({
+        error: 'RATE_LIMIT_EXCEEDED',
+        message: 'Bạn đã vượt quá giới hạn quét hóa đơn (tối đa 20 lượt/ngày).',
+      }), {
+        status: 429,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -132,6 +158,16 @@ Deno.serve(async (req: Request) => {
     });
 
     const data = await groqResponse.json();
+    if (groqResponse.ok && data?.choices?.[0]?.message?.content) {
+      const { error: usageError } = await supabase
+        .from('ocr_usage')
+        .insert({ user_id: user.id });
+
+      if (usageError) {
+        console.error('Failed to record OCR usage:', usageError);
+      }
+    }
+
     return new Response(JSON.stringify(data), {
       status: groqResponse.status,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
