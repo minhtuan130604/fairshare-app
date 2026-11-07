@@ -7,6 +7,7 @@ const MAX_BASE64_IMAGE_LENGTH = 7 * 1024 * 1024;
 // @ts-nocheck
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL = 'qwen/qwen3.8-27b';
+const GROQ_FALLBACK_MODEL = 'llama-3.2-11b-vision-preview';
 
 const RECEIPT_OCR_PROMPT = `
 Bạn là hệ thống đọc hóa đơn đa năng. Đọc ảnh hóa đơn và trả về DUY NHẤT một JSON hợp lệ theo cấu trúc:
@@ -49,6 +50,52 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+async function requestGroq(model: string, apiKey: string, base64Image: string): Promise<Response> {
+  return fetch(GROQ_API_URL, {
+    signal: AbortSignal.timeout(35_000),
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.1,
+      reasoning_effort: 'none',
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: RECEIPT_OCR_PROMPT },
+            {
+              type: 'image_url',
+              image_url: { url: `data:image/jpeg;base64,${base64Image}` },
+            },
+          ],
+        },
+      ],
+    }),
+  });
+}
+
+async function shouldFallback(response: Response): Promise<boolean> {
+  if (response.status === 429 || response.status >= 500) return true;
+
+  const body = await response.clone().text();
+  return body.toLowerCase().includes('over capacity');
+}
+
+async function requestWithFallback(apiKey: string, base64Image: string): Promise<Response> {
+  const primaryResponse = await requestGroq(GROQ_MODEL, apiKey, base64Image);
+  if (!(await shouldFallback(primaryResponse))) {
+    return primaryResponse;
+  }
+
+  console.warn(`Primary model ${GROQ_MODEL} failed/overloaded. Falling back to ${GROQ_FALLBACK_MODEL}...`);
+  return requestGroq(GROQ_FALLBACK_MODEL, apiKey, base64Image);
+}
 
 // Dùng Deno.serve chuẩn của Supabase Edge Functions
 Deno.serve(async (req: Request) => {
@@ -124,7 +171,8 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const apiKey = Deno.env.get('GROQ_API_KEY');
+    const rawApiKey = Deno.env.get('GROQ_API_KEY');
+    const apiKey = rawApiKey?.replace(/[^\x00-\x7F]/g, '').trim();
     if (!apiKey) {
       return new Response(
         JSON.stringify({ error: 'MISSING_SERVER_GROQ_API_KEY' }),
@@ -140,32 +188,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const groqResponse = await fetch(GROQ_API_URL, {
-      signal: AbortSignal.timeout(35_000),
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: GROQ_MODEL,
-        temperature: 0.1,
-        reasoning_effort: 'none',
-        response_format: { type: 'json_object' },
-        messages: [
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: RECEIPT_OCR_PROMPT },
-              {
-                type: 'image_url',
-                image_url: { url: `data:image/jpeg;base64,${base64Image}` },
-              },
-            ],
-          },
-        ],
-      }),
-    });
+    const groqResponse = await requestWithFallback(apiKey, base64Image);
 
     const data = await groqResponse.json();
     if (!groqResponse.ok) {
