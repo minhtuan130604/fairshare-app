@@ -158,6 +158,9 @@ async function callGroqVision(
         const status = (error as any)?.context?.status || (error as any)?.status;
         const responseBody = await (error as any)?.context?.json?.().catch(() => null);
 
+        if (responseBody?.error === 'CONCURRENT_REQUEST_BLOCKED') {
+          throw new Error('CONCURRENT_REQUEST_BLOCKED');
+        }
         if (responseBody?.error === 'RATE_LIMIT_EXCEEDED') {
           throw new Error('DAILY_LIMIT_EXCEEDED');
         }

@@ -140,6 +140,35 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    const { data: recentRequests, error: recentRequestError } = await supabaseAdmin
+      .from('ocr_usage')
+      .select('created_at')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (recentRequestError) {
+      return new Response(JSON.stringify({ error: 'OCR_USAGE_CHECK_FAILED' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (recentRequests && recentRequests.length > 0) {
+      const lastRequestTime = new Date(recentRequests[0].created_at).getTime();
+      const now = Date.now();
+      if (now - lastRequestTime < 5000) {
+        return new Response(JSON.stringify({
+          error: 'CONCURRENT_REQUEST_BLOCKED',
+          message: 'A scan request is already being processed. Please wait a few seconds.',
+        }), {
+          status: 429,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
+
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { count, error: countError } = await supabaseAdmin
       .from('ocr_usage')

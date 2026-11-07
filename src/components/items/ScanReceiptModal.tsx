@@ -265,6 +265,9 @@ export function ScanReceiptModal({ isOpen, onClose, expenseId }: ScanReceiptModa
       const errorMessage = err instanceof Error ? err.message : String(err);
       if (errorMessage.includes('DAILY_LIMIT_EXCEEDED')) {
         setError(t('ocrDailyLimitReached', locale));
+      } else if (errorMessage.includes('CONCURRENT_REQUEST_BLOCKED')) {
+        setError(t('ocrConcurrentRequestBlocked', locale));
+
       } else if (errorMessage.includes('RATE_LIMIT_BUSY')) {
         setError(t('ocrRateLimitBusy', locale));
       } else {
