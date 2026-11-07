@@ -133,8 +133,11 @@ async function callGroqVision(
         const status = (error as any)?.context?.status || (error as any)?.status;
         const responseBody = await (error as any)?.context?.json?.().catch(() => null);
 
-        if (status === 429 || responseBody?.error === 'RATE_LIMIT_EXCEEDED') {
-          throw new Error('RATE_LIMIT_EXCEEDED');
+        if (responseBody?.error === 'RATE_LIMIT_EXCEEDED') {
+          throw new Error('DAILY_LIMIT_EXCEEDED');
+        }
+        if (status === 429) {
+          throw new Error('RATE_LIMIT_BUSY');
         }
         throw error;
       }
@@ -165,6 +168,9 @@ async function callGroqVision(
   }
 
   if (!response?.ok) {
+    if (response?.status === 429) {
+      throw new Error('RATE_LIMIT_BUSY');
+    }
     const status = response ? `GROQ_HTTP_${response.status}` : 'GROQ_REQUEST_FAILED';
     throw new Error(`${status}: ${lastError || 'Không nhận được phản hồi hợp lệ.'}`);
   }

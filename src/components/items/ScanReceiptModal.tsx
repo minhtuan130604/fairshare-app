@@ -84,7 +84,8 @@ function formatRecognizedRates(
             : `${serviceRate}% Service Charge`,
     );
   }
-  const conjunction = locale === 'vi' ? ' và ' : locale === 'ru' ? ' и ' : ' 和 ';
+  const conjunction =
+    locale === 'vi' ? ' và ' : locale === 'en' ? ' and ' : locale === 'ru' ? ' и ' : ' 和 ';
   return rates.join(conjunction);
 }
 
@@ -262,8 +263,10 @@ export function ScanReceiptModal({ isOpen, onClose, expenseId }: ScanReceiptModa
     } catch (err) {
       console.error('[ScanReceipt] Error caught:', err);
       const errorMessage = err instanceof Error ? err.message : String(err);
-      if (errorMessage.includes('RATE_LIMIT_EXCEEDED') || errorMessage.includes('429')) {
+      if (errorMessage.includes('DAILY_LIMIT_EXCEEDED')) {
         setError(t('ocrDailyLimitReached', locale));
+      } else if (errorMessage.includes('RATE_LIMIT_BUSY')) {
+        setError(t('ocrRateLimitBusy', locale));
       } else {
         setError(t('readFailed', locale));
       }
