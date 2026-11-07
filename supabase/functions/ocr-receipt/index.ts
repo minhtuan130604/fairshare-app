@@ -64,6 +64,7 @@ Deno.serve(async (req: Request) => {
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
+  const supabaseServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   if (!supabaseUrl || !supabaseAnonKey) {
     return new Response(JSON.stringify({ error: 'UNAUTHORIZED' }), {
       status: 401,
@@ -72,6 +73,11 @@ Deno.serve(async (req: Request) => {
   }
 
   const supabase = createClient(supabaseUrl, supabaseAnonKey);
+  const supabaseAdmin = createClient(
+    supabaseUrl,
+    supabaseServiceRoleKey || supabaseAnonKey,
+    { auth: { persistSession: false } }
+  );
   let user;
   try {
     const { data: userData, error: authError } = await supabase.auth.getUser(token);
@@ -84,7 +90,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const { count, error: countError } = await supabase
+    const { count, error: countError } = await supabaseAdmin
       .from('ocr_usage')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', user.id)
@@ -159,7 +165,7 @@ Deno.serve(async (req: Request) => {
 
     const data = await groqResponse.json();
     if (groqResponse.ok && data?.choices?.[0]?.message?.content) {
-      const { error: usageError } = await supabase
+      const { error: usageError } = await supabaseAdmin
         .from('ocr_usage')
         .insert({ user_id: user.id });
 
