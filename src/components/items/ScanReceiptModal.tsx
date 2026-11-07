@@ -56,6 +56,38 @@ const LANG_OPTIONS: { id: ReceiptLangId; label: string; hintKey?: string }[] = [
   { id: 'ru', label: RECEIPT_LANGUAGES.ru.label },
 ];
 
+function formatRecognizedRates(
+  locale: string,
+  vatRate: number | null,
+  serviceRate: number | null,
+): string {
+  const rates: string[] = [];
+  if (vatRate !== null && vatRate > 0) {
+    rates.push(
+      locale === 'vi'
+        ? `VAT ${vatRate}%`
+        : locale === 'ru'
+          ? `НДС ${vatRate}%`
+          : locale === 'zh'
+            ? `${vatRate}% 增值税`
+            : `${vatRate}% VAT`,
+    );
+  }
+  if (serviceRate !== null && serviceRate > 0) {
+    rates.push(
+      locale === 'vi'
+        ? `Phí dịch vụ ${serviceRate}%`
+        : locale === 'ru'
+          ? `сервисный сбор ${serviceRate}%`
+          : locale === 'zh'
+            ? `${serviceRate}% 服务费`
+            : `${serviceRate}% Service Charge`,
+    );
+  }
+  const conjunction = locale === 'vi' ? ' và ' : locale === 'ru' ? ' и ' : ' 和 ';
+  return rates.join(conjunction);
+}
+
 function inferCurrencyFromScan(
   text: string,
   langCode?: string,
@@ -246,6 +278,9 @@ export function ScanReceiptModal({ isOpen, onClose, expenseId }: ScanReceiptModa
     (sum, draft) => sum + draft.price * draft.quantity,
     0,
   );
+  const hasTaxOrService =
+    (detectedVatRate !== null && detectedVatRate > 0) ||
+    (detectedServiceRate !== null && detectedServiceRate > 0);
 
   const confirm = () => {
     // 1. Cập nhật loại tiền tệ
@@ -348,15 +383,25 @@ export function ScanReceiptModal({ isOpen, onClose, expenseId }: ScanReceiptModa
         {detectedTotal !== null && (
           <p
             className={`text-xs ${
-              Math.abs(detectedTotal - selectedTotal) < 1 ? 'text-accent' : 'text-warn'
+              Math.abs(detectedTotal - selectedTotal) < 1
+                ? 'text-accent'
+                : hasTaxOrService
+                  ? 'text-blue-400'
+                  : 'text-warn'
             }`}
           >
-            {t('receiptPrintedTotal', locale, {
-              amount: formatCurrency(detectedTotal, detectedCurrency),
-            })}
             {Math.abs(detectedTotal - selectedTotal) < 1
-              ? t('totalMatches', locale)
-              : ` ${t('totalMayIncludeExtras', locale)} ${t('reviewItemsWarning', locale)}`}
+              ? `${t('receiptPrintedTotal', locale, {
+                  amount: formatCurrency(detectedTotal, detectedCurrency),
+                })}${t('totalMatches', locale)}`
+              : hasTaxOrService
+                ? t('receiptIncludesTaxFees', locale, {
+                    total: formatCurrency(detectedTotal, detectedCurrency),
+                    rates: formatRecognizedRates(locale, detectedVatRate, detectedServiceRate),
+                  })
+                : `${t('receiptPrintedTotal', locale, {
+                    amount: formatCurrency(detectedTotal, detectedCurrency),
+                  })} ${t('totalMayIncludeExtras', locale)} ${t('reviewItemsWarning', locale)}`}
           </p>
         )}
         <div className="flex gap-3">
