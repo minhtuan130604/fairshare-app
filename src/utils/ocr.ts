@@ -107,6 +107,7 @@ async function callGroqVision(
   onProgress('Đang gửi ảnh để phân tích...', 0.35);
 
   let response: Response | null = null;
+  let dataFromInvoke: unknown;
   let lastError = '';
 
   if (!supabase) {
@@ -125,6 +126,7 @@ async function callGroqVision(
       });
 
       if (error) throw error;
+      dataFromInvoke = data;
       response = new Response(JSON.stringify(data), { status: 200 });
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
@@ -156,12 +158,7 @@ async function callGroqVision(
   }
 
   onProgress('Đang phân tích dữ liệu hóa đơn...', 0.75);
-  const responseJson: unknown = await response.json();
-  if (!responseJson || typeof responseJson !== 'object' || Array.isArray(responseJson)) {
-    throw new Error('GROQ_INVALID_RESPONSE');
-  }
-
-  const data = responseJson as GroqReceiptPayload;
+  const data = (dataFromInvoke || {}) as GroqReceiptPayload;
 
   let detectedLangId: Exclude<ReceiptLangId, 'auto'> = 'vi';
   if (
